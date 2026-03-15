@@ -223,8 +223,8 @@
                                         <DataGridTextColumn Header="Refs" Binding="{Binding TextureRefs}" Width="80"/>
                                         <DataGridTextColumn Header="Present In Mod" Binding="{Binding PresentInMod}" Width="110"/>
                                         <DataGridTextColumn Header="Current Content" Binding="{Binding SatisfiedByCurrent}" Width="110"/>
-                                        <DataGridTextColumn Header="Resolved From Old" Binding="{Binding ResolvedFromOld}" Width="120"/>
-                                        <DataGridTextColumn Header="Unresolved" Binding="{Binding Unresolved}" Width="100"/>
+                                        <DataGridTextColumn Header="References to Fix" Binding="{Binding ResolvedFromOld}" Width="135"/>
+                                        <DataGridTextColumn Header="Textures Copied" Binding="{Binding FixesMade}" Width="120"/>
                                         <DataGridTextColumn Header="Build Status" Binding="{Binding BuildStatus}" Width="100"/>
                                         <DataGridTextColumn Header="Fixes Made" Binding="{Binding FixesMade}" Width="100"/>
                                         <DataGridTextColumn Header="Built Zip" Binding="{Binding OutZip}" Width="240"/>

@@ -16,6 +16,7 @@ namespace BeamNGTextureFixer.Models
         public int Unresolved { get; set; }
         public string BuildStatus { get; set; } = "not built";
         public int FixesMade { get; set; }
+        public string FixSummary => $"{ResolvedFromOld} / {FixesMade}";
         public string OutZip { get; set; } = "";
         public List<DetailRow> DetailRows { get; set; } = new();
         public BeamNGFixerService? Service { get; set; }

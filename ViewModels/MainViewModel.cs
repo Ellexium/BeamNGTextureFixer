@@ -33,14 +33,26 @@ namespace BeamNGTextureFixer.ViewModels
         public string OldContentFolder
         {
             get => _oldContentFolder;
-            set => SetProperty(ref _oldContentFolder, value);
+            set
+            {
+                if (SetProperty(ref _oldContentFolder, value))
+                {
+                    BeamNGFixerService.ClearIndexCache();
+                }
+            }
         }
 
         private string _currentContentFolder = string.Empty;
         public string CurrentContentFolder
         {
             get => _currentContentFolder;
-            set => SetProperty(ref _currentContentFolder, value);
+            set
+            {
+                if (SetProperty(ref _currentContentFolder, value))
+                {
+                    BeamNGFixerService.ClearIndexCache();
+                }
+            }
         }
 
         private string _selectedModsDisplay = string.Empty;
@@ -190,7 +202,7 @@ namespace BeamNGTextureFixer.ViewModels
                             ResolvedFromOld = payload.ResolvedFromOld,
                             Unresolved = payload.Unresolved,
                             BuildStatus = "not built",
-                            FixesMade = payload.ResolvedFromOld,
+                            FixesMade = 0,
                             OutZip = "",
                             Service = service
                         };
@@ -418,8 +430,9 @@ namespace BeamNGTextureFixer.ViewModels
             if (SelectedMainTabIndex == 0)
             {
                 int totalMods = BatchResults.Count;
-                int modsWithFixes = BatchResults.Count(x => x.FixesMade > 0);
-                int totalFixes = BatchResults.Sum(x => x.FixesMade);
+                int modsWithFixableRefs = BatchResults.Count(x => x.ResolvedFromOld > 0);
+                int totalFixableRefs = BatchResults.Sum(x => x.ResolvedFromOld);
+                int totalTexturesCopied = BatchResults.Sum(x => x.FixesMade);
 
                 if (totalMods == 0)
                 {
@@ -427,7 +440,7 @@ namespace BeamNGTextureFixer.ViewModels
                     return;
                 }
 
-                StatusText = $"{totalFixes} fixes made across {modsWithFixes} out of {totalMods} mods";
+                StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {modsWithFixableRefs} out of {totalMods} mods";
             }
             else
             {
@@ -437,11 +450,12 @@ namespace BeamNGTextureFixer.ViewModels
                     return;
                 }
 
-                int fixesMade = SelectedBatchResult.FixesMade;
+                int fixableRefs = SelectedBatchResult.ResolvedFromOld;
+                int texturesCopied = SelectedBatchResult.FixesMade;
                 int textureCount = SelectedBatchResult.TextureRefs;
                 string modName = SelectedBatchResult.ModName;
 
-                StatusText = $"{fixesMade} fixes made, {textureCount} textures overall for {modName}";
+                StatusText = $"{texturesCopied} textures copied satisfying {fixableRefs} fixable references, {textureCount} textures overall for {modName}";
             }
         }
     }
