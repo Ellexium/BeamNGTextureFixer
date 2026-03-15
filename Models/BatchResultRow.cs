@@ -1,4 +1,5 @@
 ﻿using BeamNGTextureFixer.Services;
+using System;
 using System.Collections.Generic;
 
 
@@ -20,5 +21,6 @@ namespace BeamNGTextureFixer.Models
         public string OutZip { get; set; } = "";
         public List<DetailRow> DetailRows { get; set; } = new();
         public BeamNGFixerService? Service { get; set; }
+        public bool IsAborted => string.Equals(BuildStatus, "aborted", StringComparison.OrdinalIgnoreCase);
     }
 }

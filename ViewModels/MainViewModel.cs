@@ -229,6 +229,7 @@ namespace BeamNGTextureFixer.ViewModels
 
             BatchResults.Clear();
             DetailRows = new List<DetailRow>();
+            SummaryText = "No scan yet.";
 
             BeginBusy();
             StatusText = "Scanning mods...";
@@ -319,6 +320,7 @@ namespace BeamNGTextureFixer.ViewModels
                     };
                 });
 
+                BatchResults.Clear();
                 foreach (var row in scannedRows.Rows)
                     BatchResults.Add(row);
 
@@ -331,22 +333,32 @@ namespace BeamNGTextureFixer.ViewModels
 
                 if (BatchResults.Count > 0)
                     SelectedBatchResult = BatchResults[0];
-
-                UpdateStatusSummary();
+                else
+                    SelectedBatchResult = null;
             }
             catch (OperationCanceledException)
             {
+                BatchResults.Clear();
+                DetailRows = new List<DetailRow>();
+                SelectedBatchResult = null;
+                SummaryText = "Scan aborted.";
                 StatusText = "Scan aborted.";
             }
             catch (Exception ex)
             {
+                BatchResults.Clear();
+                DetailRows = new List<DetailRow>();
+                SelectedBatchResult = null;
+                SummaryText = "Scan failed.";
                 StatusText = "Error during scan.";
                 MessageBox.Show(ex.Message, "Scan Error");
             }
             finally
             {
                 EndBusy();
-                UpdateStatusSummary();
+
+                if (BatchResults.Count > 0)
+                    UpdateStatusSummary();
             }
         }
 
@@ -382,60 +394,78 @@ namespace BeamNGTextureFixer.ViewModels
             try
             {
                 var selectedPathBeforeRefresh = SelectedBatchResult?.ModZip;
-                var rowsToBuild = BatchResults.ToList();
+
+                var allRows = BatchResults.ToList();
+                var rowsToBuild = allRows
+                    .Where(x => !string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
                 var buildOutcome = await Task.Run(() =>
                 {
                     int builtCount = 0;
                     int skippedCount = 0;
+                    int abortedCount = 0;
 
                     foreach (var row in rowsToBuild)
                     {
-                        token.ThrowIfCancellationRequested();
-
                         if (row.Service is null)
                             continue;
 
-                        var outPath = Path.Combine(
-                            Path.GetDirectoryName(row.ModZip) ?? "",
-                            Path.GetFileNameWithoutExtension(row.ModZip) + "_fixed.zip");
+                        try
+                        {
+                            token.ThrowIfCancellationRequested();
 
-                        var result = row.Service.BuildFixedMod(
-                            outPath,
-                            (done, total, message) =>
-                            {
-                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            var outPath = Path.Combine(
+                                Path.GetDirectoryName(row.ModZip) ?? "",
+                                Path.GetFileNameWithoutExtension(row.ModZip) + "_fixed.zip");
+
+                            var result = row.Service.BuildFixedMod(
+                                outPath,
+                                (done, total, message) =>
                                 {
-                                    IsProgressIndeterminate = false;
-                                    ProgressMaximum = total;
-                                    ProgressValue = done;
-                                    StatusText = $"{Path.GetFileName(row.ModZip)} - {message}";
-                                });
-                            },
-                            token);
+                                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                    {
+                                        IsProgressIndeterminate = false;
+                                        ProgressMaximum = total;
+                                        ProgressValue = done;
+                                        StatusText = $"{Path.GetFileName(row.ModZip)} - {message}";
+                                    });
+                                },
+                                token);
 
-                        if (result.Built)
-                        {
-                            row.BuildStatus = "built";
-                            row.OutZip = result.OutPath;
-                            row.FixesMade = result.Copied;
-                            builtCount++;
+                            if (result.Built)
+                            {
+                                row.BuildStatus = "built";
+                                row.OutZip = result.OutPath;
+                                row.FixesMade = result.Copied;
+                                builtCount++;
+                            }
+                            else
+                            {
+                                row.BuildStatus = "skipped";
+                                row.OutZip = "";
+                                row.FixesMade = 0;
+                                skippedCount++;
+                            }
                         }
-                        else
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
                         {
-                            row.BuildStatus = "skipped";
+                            row.BuildStatus = "not built";
                             row.OutZip = "";
                             row.FixesMade = 0;
-                            skippedCount++;
+                            abortedCount++;
+                            break;
                         }
                     }
 
                     return new
                     {
-                        Rows = rowsToBuild,
+                        Rows = allRows,
                         BuiltCount = builtCount,
                         SkippedCount = skippedCount,
-                        SelectedPathBeforeRefresh = selectedPathBeforeRefresh
+                        AbortedCount = abortedCount,
+                        SelectedPathBeforeRefresh = selectedPathBeforeRefresh,
+                        WasCancelled = token.IsCancellationRequested
                     };
                 });
 
@@ -444,20 +474,19 @@ namespace BeamNGTextureFixer.ViewModels
                     BatchResults.Add(row);
 
                 if (!string.IsNullOrWhiteSpace(buildOutcome.SelectedPathBeforeRefresh))
-                {
                     SelectedBatchResult = BatchResults.FirstOrDefault(x => x.ModZip == buildOutcome.SelectedPathBeforeRefresh);
-                }
 
                 if (SelectedBatchResult is null && BatchResults.Count > 0)
                     SelectedBatchResult = BatchResults[0];
 
-                MessageBox.Show(
-                    $"Built: {buildOutcome.BuiltCount}\nSkipped (no new paths found): {buildOutcome.SkippedCount}",
-                    "Batch Build Complete");
-            }
-            catch (OperationCanceledException)
-            {
-                StatusText = "Build aborted.";
+                if (!buildOutcome.WasCancelled)
+                {
+                    UpdateStatusSummary();
+                }
+                else
+                {
+                    StatusText = "Build aborted.";
+                }
             }
             catch (Exception ex)
             {
@@ -507,9 +536,16 @@ namespace BeamNGTextureFixer.ViewModels
             if (SelectedMainTabIndex == 0)
             {
                 int totalMods = BatchResults.Count;
-                int modsWithFixableRefs = BatchResults.Count(x => x.ResolvedFromOld > 0);
-                int totalFixableRefs = BatchResults.Sum(x => x.ResolvedFromOld);
-                int totalTexturesCopied = BatchResults.Sum(x => x.FixesMade);
+                int builtMods = BatchResults.Count(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase));
+                int unfinishedMods = totalMods - builtMods;
+
+                int totalFixableRefs = BatchResults
+                    .Where(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
+                    .Sum(x => x.ResolvedFromOld);
+
+                int totalTexturesCopied = BatchResults
+                    .Where(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
+                    .Sum(x => x.FixesMade);
 
                 if (totalMods == 0)
                 {
@@ -517,7 +553,7 @@ namespace BeamNGTextureFixer.ViewModels
                     return;
                 }
 
-                StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {modsWithFixableRefs} out of {totalMods} mods";
+                StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {builtMods} out of {totalMods} mods ({unfinishedMods} aborted)";
             }
             else
             {
