@@ -12,11 +12,33 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
+using System.IO.Compression;
 
 namespace BeamNGTextureFixer.ViewModels
 {
     public class MainViewModel : ViewModelBase
     {
+
+        private static int CountMaterialFilesInZip(string zipPath, CancellationToken token)
+        {
+            using var archive = ZipFile.OpenRead(zipPath);
+
+            int count = 0;
+            foreach (var entry in archive.Entries)
+            {
+                token.ThrowIfCancellationRequested();
+
+                if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
+                    continue;
+
+                var norm = PathHelpers.NormalizePath(entry.FullName);
+                if (norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase))
+                    count++;
+            }
+
+            return count;
+        }
+
         private CancellationTokenSource? _cts;
         private bool _closeAfterAbort;
 
@@ -232,7 +254,8 @@ namespace BeamNGTextureFixer.ViewModels
             SummaryText = "No scan yet.";
 
             BeginBusy();
-            StatusText = "Scanning mods...";
+            StatusText = "Counting material files...";
+            IsProgressIndeterminate = true;
 
             await System.Windows.Application.Current.Dispatcher.InvokeAsync(
                 () => { },
@@ -242,6 +265,25 @@ namespace BeamNGTextureFixer.ViewModels
 
             try
             {
+                int totalMaterialFiles = await Task.Run(() =>
+                {
+                    int total = 0;
+                    foreach (var modZip in SelectedMods)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        total += CountMaterialFilesInZip(modZip, token);
+                    }
+                    return total;
+                }, token);
+
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    IsProgressIndeterminate = false;
+                    ProgressMaximum = Math.Max(totalMaterialFiles, 1);
+                    ProgressValue = 0;
+                    StatusText = $"Scanning materials... 0 / {totalMaterialFiles}";
+                });
+
                 var scannedRows = await Task.Run(() =>
                 {
                     var rows = new List<BatchResultRow>();
@@ -249,16 +291,33 @@ namespace BeamNGTextureFixer.ViewModels
                     int totalOld = 0;
                     int totalUnresolved = 0;
 
+                    int globalProcessedMaterials = 0;
+
                     foreach (var modZip in SelectedMods)
                     {
                         token.ThrowIfCancellationRequested();
 
                         var service = new BeamNGFixerService();
+
                         var payload = service.Scan(
                             modZip,
                             OldContentFolder,
                             string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder,
-                            token);
+                            token,
+                            (doneInThisMod, totalInThisMod, message) =>
+                            {
+                                int absoluteDone = globalProcessedMaterials + doneInThisMod;
+
+                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    IsProgressIndeterminate = false;
+                                    ProgressMaximum = Math.Max(totalMaterialFiles, 1);
+                                    ProgressValue = Math.Min(absoluteDone, totalMaterialFiles);
+                                    StatusText = $"{Path.GetFileName(modZip)} - scanning materials... {Math.Min(absoluteDone, totalMaterialFiles)} / {totalMaterialFiles}";
+                                });
+                            });
+
+                        globalProcessedMaterials += payload.MaterialFiles;
 
                         var row = new BatchResultRow
                         {
@@ -318,7 +377,7 @@ namespace BeamNGTextureFixer.ViewModels
                         TotalOld = totalOld,
                         TotalUnresolved = totalUnresolved
                     };
-                });
+                }, token);
 
                 BatchResults.Clear();
                 foreach (var row in scannedRows.Rows)

@@ -139,7 +139,7 @@ namespace BeamNGTextureFixer.Services
             Dictionary<string, string> materialTextMap,
             List<MaterialFileInfo> materialInfos,
             HashSet<string> modFileSet
-        ) ScanMaterialFiles(string modZipPath, CancellationToken token)
+        ) ScanMaterialFiles(string modZipPath, CancellationToken token, Action<int, int, string>? progressCallback = null)
         {
             var materialPaths = new List<string>();
             var materialJsonMap = new Dictionary<string, JsonDocument?>(StringComparer.OrdinalIgnoreCase);
@@ -148,6 +148,18 @@ namespace BeamNGTextureFixer.Services
             var modFileSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             using var archive = ZipFile.OpenRead(modZipPath);
+
+            int totalMaterialFilesInThisMod = archive.Entries.Count(entry =>
+            {
+                if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
+                    return false;
+
+                var norm = PathHelpers.NormalizePath(entry.FullName);
+                return norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase);
+            });
+
+            int processedMaterialFilesInThisMod = 0;
+
             foreach (var entry in archive.Entries)
             {
                 token.ThrowIfCancellationRequested();
@@ -179,7 +191,7 @@ namespace BeamNGTextureFixer.Services
                         Error = string.Empty
                     });
                 }
-                catch (Exception ex)
+                catch (JsonException ex)
                 {
                     materialJsonMap[norm] = null;
                     materialInfos.Add(new MaterialFileInfo
@@ -190,6 +202,12 @@ namespace BeamNGTextureFixer.Services
                         Error = ex.Message
                     });
                 }
+
+                processedMaterialFilesInThisMod++;
+                progressCallback?.Invoke(
+                    processedMaterialFilesInThisMod,
+                    totalMaterialFilesInThisMod,
+                    $"Reading material files... {processedMaterialFilesInThisMod} / {totalMaterialFilesInThisMod}");
             }
 
             return (materialPaths, materialJsonMap, materialTextMap, materialInfos, modFileSet);
@@ -457,23 +475,23 @@ namespace BeamNGTextureFixer.Services
             return new SearchHit { Status = "unresolved", MatchType = "unresolved", SourceZipPath = null, InternalPath = null };
         }
 
-        public ScanSummary Scan(string modZipPath, string oldFolder, string? currentFolder = null, CancellationToken token = default)
+        public ScanSummary Scan(
+    string modZipPath,
+    string oldFolder,
+    string? currentFolder = null,
+    CancellationToken token = default,
+    Action<int, int, string>? progressCallback = null)
         {
-            // Dispose previous scan-state documents before replacing them
             ClearScanState();
 
             ModZipPath = modZipPath;
             OldFolder = oldFolder;
             CurrentFolder = currentFolder ?? string.Empty;
 
-            var scan = ScanMaterialFiles(modZipPath, token);
-
+            var scan = ScanMaterialFiles(modZipPath, token, progressCallback);
             var extracted = ExtractTextureRefs(scan.materialPaths, scan.materialJsonMap, scan.materialTextMap, scan.materialInfos, token);
 
-
-            // Cached indexes shared across service instances
             var oldIndexes = GetOrBuildCachedIndex(oldFolder, token);
-
             var currentIndexes = !string.IsNullOrWhiteSpace(currentFolder) ? GetOrBuildCachedIndex(currentFolder!, token) : null;
 
             var modLower = new HashSet<string>(scan.modFileSet.Select(x => x.ToLowerInvariant()));
