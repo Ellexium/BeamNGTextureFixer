@@ -1,0 +1,317 @@
+﻿<Window x:Class="BeamNGTextureFixer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="BeamNG Missing Texture Fixer"
+        Height="900"
+        Width="1600"
+        MinHeight="700"
+        MinWidth="1200"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource WindowBackgroundBrush}">
+
+    <DockPanel LastChildFill="True" Margin="16">
+
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource CardBackgroundBrush}"
+                CornerRadius="10"
+                Padding="12"
+                Margin="0,12,0,0">
+            <StackPanel>
+                <TextBlock Text="{Binding StatusText}"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           FontSize="13" />
+
+                <ProgressBar Margin="0,8,0,0"
+                             Height="6"
+                             Minimum="0"
+                             Maximum="{Binding ProgressMaximum}"
+                             Value="{Binding ProgressValue}"
+                             IsIndeterminate="{Binding IsProgressIndeterminate}"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
+            </StackPanel>
+        </Border>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="12"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="{StaticResource CardBackgroundBrush}"
+                    CornerRadius="16"
+                    Padding="0"
+                    Margin="0,0,0,12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="6"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
+                            Background="{StaticResource BeamAccentBrush}"
+                            CornerRadius="16,16,0,0"/>
+
+                    <Grid Grid.Row="1" Margin="20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Image Source="Assets/beamng_logo.png"
+                               Width="54"
+                               Height="54"
+                               Margin="0,0,16,0"
+                               VerticalAlignment="Top"/>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="BeamNG Missing Texture Fixer"
+                                       FontSize="28"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="Scan mod zip files, compare against current and old content, and build fixed zips only when needed."
+                                       Margin="0,8,0,0"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1"
+                    Background="{StaticResource CardBackgroundBrush}"
+                    CornerRadius="16"
+                    Padding="16"
+                    Margin="0,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="120"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Grid.Column="0"
+                               Text="Old BeamNG Content Folder"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="0"
+                             Grid.Column="1"
+                             Margin="12,0"
+                             Text="{Binding OldContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Row="0"
+                            Grid.Column="2"
+                            Content="Browse"
+                            Command="{Binding BrowseOldCommand}" />
+
+                    <TextBlock Grid.Row="1"
+                               Grid.Column="0"
+                               Margin="0,12,0,0"
+                               Text="Current BeamNG Content Folder"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="1"
+                             Grid.Column="1"
+                             Margin="12,12,12,0"
+                             Text="{Binding CurrentContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Row="1"
+                            Grid.Column="2"
+                            Margin="0,12,0,0"
+                            Content="Browse"
+                            Command="{Binding BrowseCurrentCommand}" />
+
+                    <TextBlock Grid.Row="2"
+                               Grid.Column="0"
+                               Margin="0,12,0,0"
+                               Text="Target Mod Zip(s)"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="2"
+                             Grid.Column="1"
+                             Margin="12,12,12,0"
+                             Text="{Binding SelectedModsDisplay}"
+                             IsReadOnly="True" />
+                    <Button Grid.Row="2"
+                            Grid.Column="2"
+                            Margin="0,12,0,0"
+                            Content="Browse"
+                            Command="{Binding BrowseModsCommand}" />
+
+                    <StackPanel Grid.Row="3"
+                                Grid.Column="0"
+                                Grid.ColumnSpan="3"
+                                Orientation="Horizontal"
+                                Margin="0,18,0,0">
+                        <Button Content="Scan Mod(s)"
+                                Width="140"
+                                Height="36"
+                                Margin="0,0,10,0"
+                                Command="{Binding ScanCommand}" />
+                        <Button Content="Build Fixed Mod(s)"
+                                Width="160"
+                                Height="36"
+                                Command="{Binding BuildCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <TabControl Grid.Row="3"
+                    Margin="0,0,0,0"
+                    Background="{StaticResource CardBackgroundBrush}"
+                    BorderBrush="{StaticResource ControlBorderBrush}"
+                    BorderThickness="1"
+                    SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
+
+                <TabItem Header="Summary">
+                    <Grid Margin="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="12"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16">
+                            <TextBlock Text="{Binding SummaryText}"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       TextWrapping="Wrap"/>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Batch Summary"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,10"/>
+
+                                <DataGrid Grid.Row="1"
+                                          ItemsSource="{Binding BatchResults}"
+                                          SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          SelectionMode="Single"
+                                          HeadersVisibility="Column"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="2"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Mod Zip" Binding="{Binding ModName}" Width="220"/>
+                                        <DataGridTextColumn Header="Material Files" Binding="{Binding MaterialFiles}" Width="100"/>
+                                        <DataGridTextColumn Header="Refs" Binding="{Binding TextureRefs}" Width="80"/>
+                                        <DataGridTextColumn Header="Present In Mod" Binding="{Binding PresentInMod}" Width="110"/>
+                                        <DataGridTextColumn Header="Current Content" Binding="{Binding SatisfiedByCurrent}" Width="110"/>
+                                        <DataGridTextColumn Header="Resolved From Old" Binding="{Binding ResolvedFromOld}" Width="120"/>
+                                        <DataGridTextColumn Header="Unresolved" Binding="{Binding Unresolved}" Width="100"/>
+                                        <DataGridTextColumn Header="Build Status" Binding="{Binding BuildStatus}" Width="100"/>
+                                        <DataGridTextColumn Header="Fixes Made" Binding="{Binding FixesMade}" Width="100"/>
+                                        <DataGridTextColumn Header="Built Zip" Binding="{Binding OutZip}" Width="240"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="Mod Details">
+                    <Grid Margin="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="12"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           Text="Selected Mod"
+                                           VerticalAlignment="Center"/>
+
+                                <ComboBox Grid.Column="1"
+                                          Margin="12,0,0,0"
+                                          ItemsSource="{Binding BatchResults}"
+                                          SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
+                                          DisplayMemberPath="ModName"/>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Mod Details"
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,10"/>
+
+                                <DataGrid Grid.Row="1"
+                                          ItemsSource="{Binding DetailRows}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          HeadersVisibility="Column"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="2"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Material File" Binding="{Binding MaterialFile}" Width="180"/>
+                                        <DataGridTextColumn Header="Mode" Binding="{Binding ParseMode}" Width="90"/>
+                                        <DataGridTextColumn Header="Material" Binding="{Binding MaterialName}" Width="140"/>
+                                        <DataGridTextColumn Header="Stage" Binding="{Binding StageIndex}" Width="60"/>
+                                        <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="120"/>
+                                        <DataGridTextColumn Header="Original Path" Binding="{Binding OriginalPath}" Width="260"/>
+                                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120"/>
+                                        <DataGridTextColumn Header="Match Type" Binding="{Binding MatchType}" Width="160"/>
+                                        <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="240"/>
+                                        <DataGridTextColumn Header="New Path" Binding="{Binding NewPath}" Width="300"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </DockPanel>
+</Window>
