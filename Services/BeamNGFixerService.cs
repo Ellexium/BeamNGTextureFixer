@@ -1,4 +1,4 @@
-﻿using BeamNGTextureFixer.Helpers;
+using BeamNGTextureFixer.Helpers;
 using BeamNGTextureFixer.Models;
 
 using System;
@@ -9,9 +9,10 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+
 namespace BeamNGTextureFixer.Services
 {
-    public class BeamNGFixerService
+    public class BeamNGFixerService : IDisposable
     {
         private static readonly HashSet<string> TextureKeys = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -33,16 +34,22 @@ namespace BeamNGTextureFixer.Services
             "layerMap",
         };
 
+        // Shared folder-index cache across all service instances
+        private static readonly object IndexCacheLock = new();
+        private static readonly Dictionary<string, ZipIndexService> IndexCache = new(StringComparer.OrdinalIgnoreCase);
+
         public List<(TextureRef Ref, SearchHit Hit)> ScanResults { get; private set; } = new();
         public List<TextureRef> TextureRefs { get; private set; } = new();
         public List<string> MaterialFiles { get; private set; } = new();
         public List<MaterialFileInfo> MaterialFileInfos { get; private set; } = new();
-        public Dictionary<string, JsonDocument?> MaterialJsonMap { get; private set; } = new();
-        public Dictionary<string, string> MaterialTextMap { get; private set; } = new();
+        public Dictionary<string, JsonDocument?> MaterialJsonMap { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> MaterialTextMap { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
         public string ModZipPath { get; private set; } = string.Empty;
         public string OldFolder { get; private set; } = string.Empty;
         public string CurrentFolder { get; private set; } = string.Empty;
         public HashSet<string> ModFileSet { get; private set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        private bool _disposed;
 
         private IEnumerable<string> IterZipFiles(string folder)
         {
@@ -51,6 +58,75 @@ namespace BeamNGTextureFixer.Services
 
             foreach (var file in Directory.EnumerateFiles(folder, "*.zip", SearchOption.AllDirectories))
                 yield return file;
+        }
+
+        private static string NormalizeFolderKey(string folder)
+        {
+            return Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        private ZipIndexService GetOrBuildCachedIndex(string folder)
+        {
+            var key = NormalizeFolderKey(folder);
+
+            lock (IndexCacheLock)
+            {
+                if (IndexCache.TryGetValue(key, out var cached))
+                    return cached;
+            }
+
+            var built = BuildSearchIndexes(folder);
+
+            lock (IndexCacheLock)
+            {
+                if (!IndexCache.ContainsKey(key))
+                    IndexCache[key] = built;
+
+                return IndexCache[key];
+            }
+        }
+
+        public static void ClearIndexCache()
+        {
+            lock (IndexCacheLock)
+            {
+                IndexCache.Clear();
+            }
+        }
+
+        private void ClearScanState()
+        {
+            foreach (var doc in MaterialJsonMap.Values)
+            {
+                doc?.Dispose();
+            }
+
+            ScanResults.Clear();
+            TextureRefs.Clear();
+            MaterialFiles.Clear();
+            MaterialFileInfos.Clear();
+            MaterialJsonMap.Clear();
+            MaterialTextMap.Clear();
+            ModFileSet.Clear();
+
+            ModZipPath = string.Empty;
+            OldFolder = string.Empty;
+            CurrentFolder = string.Empty;
+        }
+
+        public void Cleanup()
+        {
+            ClearScanState();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            Cleanup();
+            _disposed = true;
+            GC.SuppressFinalize(this);
         }
 
         private (
@@ -373,6 +449,9 @@ namespace BeamNGTextureFixer.Services
 
         public ScanSummary Scan(string modZipPath, string oldFolder, string? currentFolder = null)
         {
+            // Dispose previous scan-state documents before replacing them
+            ClearScanState();
+
             ModZipPath = modZipPath;
             OldFolder = oldFolder;
             CurrentFolder = currentFolder ?? string.Empty;
@@ -380,8 +459,10 @@ namespace BeamNGTextureFixer.Services
             var scan = ScanMaterialFiles(modZipPath);
             var extracted = ExtractTextureRefs(scan.materialPaths, scan.materialJsonMap, scan.materialTextMap, scan.materialInfos);
 
-            var oldIndexes = BuildSearchIndexes(oldFolder);
-            var currentIndexes = !string.IsNullOrWhiteSpace(currentFolder) ? BuildSearchIndexes(currentFolder!) : null;
+            // Cached indexes shared across service instances
+            var oldIndexes = GetOrBuildCachedIndex(oldFolder);
+            var currentIndexes = !string.IsNullOrWhiteSpace(currentFolder) ? GetOrBuildCachedIndex(currentFolder!) : null;
+
             var modLower = new HashSet<string>(scan.modFileSet.Select(x => x.ToLowerInvariant()));
 
             var results = new List<(TextureRef Ref, SearchHit Hit)>();
@@ -811,7 +892,6 @@ namespace BeamNGTextureFixer.Services
 
             return updated;
         }
-
     }
 
     public class RewritePlan
