@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -16,6 +17,24 @@ namespace BeamNGTextureFixer.ViewModels
 {
     public class MainViewModel : ViewModelBase
     {
+        private CancellationTokenSource? _cts;
+        private bool _closeAfterAbort;
+
+        private bool _canAbort;
+        public bool CanAbort
+        {
+            get => _canAbort;
+            set
+            {
+                if (SetProperty(ref _canAbort, value))
+                    AbortCommand.RaiseCanExecuteChanged();
+            }
+        }
+
+        public event Action? RequestCloseRequested;
+
+        public RelayCommand AbortCommand { get; }
+
         private int _selectedMainTabIndex;
         public int SelectedMainTabIndex
         {
@@ -114,8 +133,53 @@ namespace BeamNGTextureFixer.ViewModels
             BrowseModsCommand = new RelayCommand(BrowseMods);
             ScanCommand = new RelayCommand(ScanMods);
             BuildCommand = new RelayCommand(BuildModsPlaceholder);
+            AbortCommand = new RelayCommand(AbortWork, () => CanAbort);
         }
 
+        private void BeginBusy()
+        {
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+
+            IsBusy = true;
+            CanAbort = true;
+            IsProgressIndeterminate = true;
+            ProgressValue = 0;
+            ProgressMaximum = 1;
+        }
+
+        private void EndBusy()
+        {
+            IsBusy = false;
+            CanAbort = false;
+            IsProgressIndeterminate = true;
+            ProgressValue = 0;
+            ProgressMaximum = 1;
+
+            _cts?.Dispose();
+            _cts = null;
+
+            if (_closeAfterAbort)
+            {
+                _closeAfterAbort = false;
+                RequestCloseRequested?.Invoke();
+            }
+        }
+
+        private void AbortWork()
+        {
+            if (_cts is null)
+                return;
+
+            StatusText = "Aborting...";
+            _cts.Cancel();
+        }
+
+        public void AbortAndClose()
+        {
+            _closeAfterAbort = true;
+            AbortWork();
+        }
         private void BrowseOldFolder()
         {
             using var dialog = new Forms.FolderBrowserDialog();
@@ -166,13 +230,14 @@ namespace BeamNGTextureFixer.ViewModels
             BatchResults.Clear();
             DetailRows = new List<DetailRow>();
 
-            IsBusy = true;
-            IsProgressIndeterminate = true;
+            BeginBusy();
             StatusText = "Scanning mods...";
 
             await System.Windows.Application.Current.Dispatcher.InvokeAsync(
                 () => { },
                 DispatcherPriority.Render);
+
+            var token = _cts?.Token ?? CancellationToken.None;
 
             try
             {
@@ -185,11 +250,14 @@ namespace BeamNGTextureFixer.ViewModels
 
                     foreach (var modZip in SelectedMods)
                     {
+                        token.ThrowIfCancellationRequested();
+
                         var service = new BeamNGFixerService();
                         var payload = service.Scan(
                             modZip,
                             OldContentFolder,
-                            string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder);
+                            string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder,
+                            token);
 
                         var row = new BatchResultRow
                         {
@@ -212,6 +280,8 @@ namespace BeamNGTextureFixer.ViewModels
 
                         foreach (var pair in payload.Results)
                         {
+                            token.ThrowIfCancellationRequested();
+
                             var newPath = "";
 
                             if (pair.Hit.Status == "resolved_from_old")
@@ -255,7 +325,7 @@ namespace BeamNGTextureFixer.ViewModels
                 SummaryText =
                     $"Scanned {BatchResults.Count} mod(s)\n" +
                     $"Total referenced texture paths: {scannedRows.TotalRefs}\n" +
-                    $"Total resolved from old content: {scannedRows.TotalOld}\n" +
+                    $"Total fixable references found: {scannedRows.TotalOld}\n" +
                     $"Total unresolved: {scannedRows.TotalUnresolved}\n" +
                     $"Build will only create *_fixed.zip for mods with new paths found.";
 
@@ -264,6 +334,10 @@ namespace BeamNGTextureFixer.ViewModels
 
                 UpdateStatusSummary();
             }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Scan aborted.";
+            }
             catch (Exception ex)
             {
                 StatusText = "Error during scan.";
@@ -271,7 +345,8 @@ namespace BeamNGTextureFixer.ViewModels
             }
             finally
             {
-                IsBusy = false;
+                EndBusy();
+                UpdateStatusSummary();
             }
         }
 
@@ -295,20 +370,18 @@ namespace BeamNGTextureFixer.ViewModels
                 return;
             }
 
-            IsBusy = true;
-            IsProgressIndeterminate = true;
-            ProgressValue = 0;
-            ProgressMaximum = 1;
+            BeginBusy();
             StatusText = "Building fixed mods...";
 
             await System.Windows.Application.Current.Dispatcher.InvokeAsync(
                 () => { },
-                System.Windows.Threading.DispatcherPriority.Render);
+                DispatcherPriority.Render);
+
+            var token = _cts?.Token ?? CancellationToken.None;
 
             try
             {
                 var selectedPathBeforeRefresh = SelectedBatchResult?.ModZip;
-
                 var rowsToBuild = BatchResults.ToList();
 
                 var buildOutcome = await Task.Run(() =>
@@ -318,6 +391,8 @@ namespace BeamNGTextureFixer.ViewModels
 
                     foreach (var row in rowsToBuild)
                     {
+                        token.ThrowIfCancellationRequested();
+
                         if (row.Service is null)
                             continue;
 
@@ -325,16 +400,19 @@ namespace BeamNGTextureFixer.ViewModels
                             Path.GetDirectoryName(row.ModZip) ?? "",
                             Path.GetFileNameWithoutExtension(row.ModZip) + "_fixed.zip");
 
-                        var result = row.Service.BuildFixedMod(outPath, (done, total, message) =>
-                        {
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        var result = row.Service.BuildFixedMod(
+                            outPath,
+                            (done, total, message) =>
                             {
-                                IsProgressIndeterminate = false;
-                                ProgressMaximum = total;
-                                ProgressValue = done;
-                                StatusText = $"{Path.GetFileName(row.ModZip)} - {message}";
-                            });
-                        });
+                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    IsProgressIndeterminate = false;
+                                    ProgressMaximum = total;
+                                    ProgressValue = done;
+                                    StatusText = $"{Path.GetFileName(row.ModZip)} - {message}";
+                                });
+                            },
+                            token);
 
                         if (result.Built)
                         {
@@ -369,15 +447,17 @@ namespace BeamNGTextureFixer.ViewModels
                 {
                     SelectedBatchResult = BatchResults.FirstOrDefault(x => x.ModZip == buildOutcome.SelectedPathBeforeRefresh);
                 }
-                if (BatchResults.Count > 0)
-                    SelectedBatchResult = BatchResults[0];
 
-                IsBusy = false;
-                UpdateStatusSummary();
+                if (SelectedBatchResult is null && BatchResults.Count > 0)
+                    SelectedBatchResult = BatchResults[0];
 
                 MessageBox.Show(
                     $"Built: {buildOutcome.BuiltCount}\nSkipped (no new paths found): {buildOutcome.SkippedCount}",
                     "Batch Build Complete");
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Build aborted.";
             }
             catch (Exception ex)
             {
@@ -386,11 +466,8 @@ namespace BeamNGTextureFixer.ViewModels
             }
             finally
             {
-                IsBusy = false;
+                EndBusy();
                 UpdateStatusSummary();
-                IsProgressIndeterminate = true;
-                ProgressValue = 0;
-                ProgressMaximum = 1;
             }
         }
 

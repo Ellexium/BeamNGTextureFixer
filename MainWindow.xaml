@@ -15,22 +15,34 @@
     <DockPanel LastChildFill="True" Margin="16">
 
         <Border DockPanel.Dock="Bottom"
-                Background="{StaticResource CardBackgroundBrush}"
-                CornerRadius="10"
-                Padding="12"
-                Margin="0,12,0,0">
+        Background="{StaticResource CardBackgroundBrush}"
+        CornerRadius="10"
+        Padding="12"
+        Margin="0,12,0,0">
             <StackPanel>
-                <TextBlock Text="{Binding StatusText}"
-                           Foreground="{StaticResource MutedForegroundBrush}"
-                           FontSize="13" />
+                <DockPanel LastChildFill="False">
+                    <TextBlock DockPanel.Dock="Left"
+                       Text="{Binding StatusText}"
+                       Foreground="{StaticResource MutedForegroundBrush}"
+                       FontSize="13"
+                       VerticalAlignment="Center" />
+
+                    <Button DockPanel.Dock="Right"
+                    Content="Abort"
+                    Margin="12,0,0,0"
+                    Padding="12,4"
+                    MinHeight="28"
+                    Command="{Binding AbortCommand}"
+                    Visibility="{Binding CanAbort, Converter={StaticResource BoolToVisibilityConverter}}" />
+                </DockPanel>
 
                 <ProgressBar Margin="0,8,0,0"
-                             Height="6"
-                             Minimum="0"
-                             Maximum="{Binding ProgressMaximum}"
-                             Value="{Binding ProgressValue}"
-                             IsIndeterminate="{Binding IsProgressIndeterminate}"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
+                     Height="6"
+                     Minimum="0"
+                     Maximum="{Binding ProgressMaximum}"
+                     Value="{Binding ProgressValue}"
+                     IsIndeterminate="{Binding IsProgressIndeterminate}"
+                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
             </StackPanel>
         </Border>
 
