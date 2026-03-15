@@ -5,10 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="BeamNG Missing Texture Fixer"
-        Height="900"
-        Width="1600"
-        MinHeight="700"
-        MinWidth="1200"
+        Height="750"
+        Width="1280"
+        MinHeight="450"
+        MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBackgroundBrush}">
 
@@ -250,7 +250,8 @@
                 <TabItem Header="Mod Details">
                     <Grid Margin="12">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="38.627"/>
+                            <RowDefinition Height="27.373"/>
                             <RowDefinition Height="12"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
@@ -258,26 +259,27 @@
                         <Border Grid.Row="0"
                                 Background="{StaticResource CardBackgroundBrush}"
                                 CornerRadius="16"
-                                Padding="16">
+                                Padding="16" Grid.RowSpan="2">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="133"/>
+                                    <ColumnDefinition Width="7"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Column="0"
-                                           Text="Selected Mod"
-                                           VerticalAlignment="Center"/>
+                                           Text="Selected Mod Requiring Fixes"
+                                           VerticalAlignment="Center" Grid.ColumnSpan="3" Margin="0,0,1,0"/>
 
-                                <ComboBox Grid.Column="1"
-                                          Margin="12,0,0,0"
-                                          ItemsSource="{Binding BatchResults}"
+                                <ComboBox Grid.Column="2"
+                                          Margin="31,0,0,0"
+                                          ItemsSource="{Binding FixableMods}"
                                           SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
                                           DisplayMemberPath="ModName"/>
                             </Grid>
                         </Border>
 
-                        <Border Grid.Row="2"
+                        <Border Grid.Row="3"
                                 Background="{StaticResource CardBackgroundBrush}"
                                 CornerRadius="16"
                                 Padding="12">
@@ -290,9 +292,9 @@
                                 <TextBlock Text="Mod Details"
                                            FontSize="18"
                                            FontWeight="SemiBold"
-                                           Margin="0,0,0,10"/>
+                                           Margin="0,-19,0,29"/>
 
-                                <DataGrid Grid.Row="1"
+                                <DataGrid
                                           ItemsSource="{Binding DetailRows}"
                                           AutoGenerateColumns="False"
                                           IsReadOnly="True"
@@ -305,7 +307,7 @@
                                           VirtualizingPanel.CacheLength="2"
                                           ScrollViewer.CanContentScroll="True"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto" Margin="0,10,0,0" Grid.RowSpan="2">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Material File" Binding="{Binding MaterialFile}" Width="180"/>
                                         <DataGridTextColumn Header="Mode" Binding="{Binding ParseMode}" Width="90"/>

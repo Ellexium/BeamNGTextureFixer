@@ -382,6 +382,7 @@ namespace BeamNGTextureFixer.ViewModels
                 BatchResults.Clear();
                 foreach (var row in scannedRows.Rows)
                     BatchResults.Add(row);
+                    OnPropertyChanged(nameof(FixableMods));
 
                 SummaryText =
                     $"Scanned {BatchResults.Count} mod(s)\n" +
@@ -390,8 +391,8 @@ namespace BeamNGTextureFixer.ViewModels
                     $"Total unresolved: {scannedRows.TotalUnresolved}\n" +
                     $"Build will only create *_fixed.zip for mods with new paths found.";
 
-                if (BatchResults.Count > 0)
-                    SelectedBatchResult = BatchResults[0];
+                if (FixableMods.Count > 0)
+                    SelectedBatchResult = FixableMods[0];
                 else
                     SelectedBatchResult = null;
             }
@@ -420,6 +421,8 @@ namespace BeamNGTextureFixer.ViewModels
                     UpdateStatusSummary();
             }
         }
+        public List<BatchResultRow> FixableMods =>
+            BatchResults.Where(x => x.ResolvedFromOld > 0).ToList();
 
         private void LoadDetailRows(BatchResultRow? row)
         {
@@ -531,12 +534,18 @@ namespace BeamNGTextureFixer.ViewModels
                 BatchResults.Clear();
                 foreach (var row in buildOutcome.Rows)
                     BatchResults.Add(row);
+                    OnPropertyChanged(nameof(FixableMods));
 
                 if (!string.IsNullOrWhiteSpace(buildOutcome.SelectedPathBeforeRefresh))
-                    SelectedBatchResult = BatchResults.FirstOrDefault(x => x.ModZip == buildOutcome.SelectedPathBeforeRefresh);
+                {
+                    SelectedBatchResult = FixableMods.FirstOrDefault(x => x.ModZip == buildOutcome.SelectedPathBeforeRefresh);
+                }
 
-                if (SelectedBatchResult is null && BatchResults.Count > 0)
-                    SelectedBatchResult = BatchResults[0];
+                if (SelectedBatchResult is null && FixableMods.Count > 0)
+                    SelectedBatchResult = FixableMods[0];
+
+                if (SelectedBatchResult is null)
+                    SelectedBatchResult = null;
 
                 if (buildOutcome.WasCancelled)
                     StatusText = "Build aborted.";
