@@ -479,14 +479,12 @@ namespace BeamNGTextureFixer.ViewModels
                 if (SelectedBatchResult is null && BatchResults.Count > 0)
                     SelectedBatchResult = BatchResults[0];
 
-                if (!buildOutcome.WasCancelled)
-                {
-                    UpdateStatusSummary();
-                }
-                else
-                {
+                if (buildOutcome.WasCancelled)
                     StatusText = "Build aborted.";
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Build aborted.";
             }
             catch (Exception ex)
             {
@@ -536,16 +534,6 @@ namespace BeamNGTextureFixer.ViewModels
             if (SelectedMainTabIndex == 0)
             {
                 int totalMods = BatchResults.Count;
-                int builtMods = BatchResults.Count(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase));
-                int unfinishedMods = totalMods - builtMods;
-
-                int totalFixableRefs = BatchResults
-                    .Where(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
-                    .Sum(x => x.ResolvedFromOld);
-
-                int totalTexturesCopied = BatchResults
-                    .Where(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
-                    .Sum(x => x.FixesMade);
 
                 if (totalMods == 0)
                 {
@@ -553,7 +541,31 @@ namespace BeamNGTextureFixer.ViewModels
                     return;
                 }
 
-                StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {builtMods} out of {totalMods} mods ({unfinishedMods} aborted)";
+                int totalFixableRefs = BatchResults.Sum(x => x.ResolvedFromOld);
+                int modsWithFixableRefs = BatchResults.Count(x => x.ResolvedFromOld > 0);
+                int modsWithNoRefsToFix = BatchResults.Count(x => x.ResolvedFromOld == 0);
+
+                int builtMods = BatchResults.Count(x =>
+                    string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase));
+
+                int totalTexturesCopied = BatchResults
+                    .Where(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
+                    .Sum(x => x.FixesMade);
+
+                // Before any build has actually happened, keep the "no references found to fix" wording
+                bool anyBuildHasHappened = BatchResults.Any(x =>
+                    string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(x.BuildStatus, "skipped", StringComparison.OrdinalIgnoreCase));
+
+                if (!anyBuildHasHappened)
+                {
+                    StatusText = $"{totalFixableRefs} fixable references across {modsWithFixableRefs} out of {totalMods} mods ({modsWithNoRefsToFix} with no references found to fix)";
+                }
+                else
+                {
+                    int abortedMods = totalMods - builtMods;
+                    StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {builtMods} out of {totalMods} mods ({abortedMods} aborted)";
+                }
             }
             else
             {
@@ -568,7 +580,16 @@ namespace BeamNGTextureFixer.ViewModels
                 int textureCount = SelectedBatchResult.TextureRefs;
                 string modName = SelectedBatchResult.ModName;
 
-                StatusText = $"{texturesCopied} textures copied satisfying {fixableRefs} fixable references, {textureCount} textures overall for {modName}";
+                bool thisModBuilt = string.Equals(SelectedBatchResult.BuildStatus, "built", StringComparison.OrdinalIgnoreCase);
+
+                if (thisModBuilt)
+                {
+                    StatusText = $"{texturesCopied} textures copied satisfying {fixableRefs} fixable references, {textureCount} textures overall for {modName}";
+                }
+                else
+                {
+                    StatusText = $"{fixableRefs} fixable references found, {textureCount} textures overall for {modName}";
+                }
             }
         }
     }

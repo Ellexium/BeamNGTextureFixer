@@ -643,11 +643,15 @@ namespace BeamNGTextureFixer.Services
             if (string.IsNullOrWhiteSpace(ModZipPath))
                 throw new InvalidOperationException("No mod scanned.");
 
+            progressCallback?.Invoke(2, 100, "Preparing fixed mod...");
+
             var plan = BuildRewritePlan();
-            progressCallback?.Invoke(0, Math.Max(plan.CopyJobs.Count, 1), "Preparing fixed mod...");
+
+            progressCallback?.Invoke(8, 100, "Rewrite plan ready...");
 
             if (plan.CopyJobs.Count == 0)
             {
+                progressCallback?.Invoke(100, 100, "No fixes needed.");
                 return new BuildFixedResult
                 {
                     Built = false,
@@ -658,13 +662,13 @@ namespace BeamNGTextureFixer.Services
             }
 
             var reportLines = new List<string>
-            {
-                $"Mod: {ModZipPath}",
-                $"Old content folder: {OldFolder}",
-                $"Current content folder: {(string.IsNullOrWhiteSpace(CurrentFolder) ? "(not specified)" : CurrentFolder)}",
-                "",
-                "Material file modes:"
-            };
+    {
+        $"Mod: {ModZipPath}",
+        $"Old content folder: {OldFolder}",
+        $"Current content folder: {(string.IsNullOrWhiteSpace(CurrentFolder) ? "(not specified)" : CurrentFolder)}",
+        "",
+        "Material file modes:"
+    };
 
             foreach (var info in MaterialFileInfos)
                 reportLines.Add($"{info.Path} | {info.ParseMode} | refs={info.RefCount} | error={info.Error}");
@@ -679,6 +683,39 @@ namespace BeamNGTextureFixer.Services
                 using (var zin = ZipFile.OpenRead(ModZipPath))
                 using (var zout = ZipFile.Open(tempPath, ZipArchiveMode.Create))
                 {
+                    int originalEntryCount = zin.Entries.Count(e => !(string.IsNullOrEmpty(e.Name) && e.FullName.EndsWith("/")));
+                    int processedOriginalEntries = 0;
+                    int totalCopyJobs = plan.CopyJobs.Count;
+                    int copiedSoFar = 0;
+
+                    void ReportOverallProgress(string message)
+                    {
+                        const double prepWeight = 0.10;
+                        const double originalWeight = 0.50;
+                        const double resolvedWeight = 0.40;
+
+                        // By the time we're here, prep/build-plan phase is done
+                        double prepProgress = 1.0;
+                        double originalProgress = originalEntryCount > 0
+                            ? (double)processedOriginalEntries / originalEntryCount
+                            : 1.0;
+                        double resolvedProgress = totalCopyJobs > 0
+                            ? (double)copiedSoFar / totalCopyJobs
+                            : 1.0;
+
+                        double overall =
+                            (prepProgress * prepWeight) +
+                            (originalProgress * originalWeight) +
+                            (resolvedProgress * resolvedWeight);
+
+                        int percent = (int)Math.Round(overall * 100.0);
+                        percent = Math.Max(0, Math.Min(100, percent));
+
+                        progressCallback?.Invoke(percent, 100, message);
+                    }
+
+                    ReportOverallProgress("Rebuilding mod contents...");
+
                     foreach (var entry in zin.Entries)
                     {
                         token.ThrowIfCancellationRequested();
@@ -713,11 +750,12 @@ namespace BeamNGTextureFixer.Services
                             using var outStream = outEntry.Open();
                             inStream.CopyTo(outStream);
                         }
+
+                        processedOriginalEntries++;
+                        ReportOverallProgress($"Rebuilding mod contents... {processedOriginalEntries} / {originalEntryCount}");
                     }
 
-                    progressCallback?.Invoke(0, Math.Max(plan.CopyJobs.Count, 1), "Copying resolved files...");
-
-                    int copiedSoFar = 0;
+                    ReportOverallProgress("Copying resolved files...");
 
                     foreach (var job in plan.CopyJobs)
                     {
@@ -730,7 +768,10 @@ namespace BeamNGTextureFixer.Services
                         using var sourceArchive = ZipFile.OpenRead(sourceZipPath);
                         var sourceEntry = sourceArchive.GetEntry(internalPath.Replace("\\", "/"))
                                          ?? sourceArchive.Entries.FirstOrDefault(e =>
-                                             string.Equals(PathHelpers.NormalizePath(e.FullName), PathHelpers.NormalizePath(internalPath), StringComparison.OrdinalIgnoreCase));
+                                             string.Equals(
+                                                 PathHelpers.NormalizePath(e.FullName),
+                                                 PathHelpers.NormalizePath(internalPath),
+                                                 StringComparison.OrdinalIgnoreCase));
 
                         if (sourceEntry == null)
                             throw new FileNotFoundException($"Could not find '{internalPath}' inside '{sourceZipPath}'.");
@@ -741,13 +782,12 @@ namespace BeamNGTextureFixer.Services
                         inStream.CopyTo(outStream);
 
                         copiedSoFar++;
-                        progressCallback?.Invoke(
-                            copiedSoFar,
-                            Math.Max(plan.CopyJobs.Count, 1),
-                            $"Copying resolved files... {copiedSoFar} / {plan.CopyJobs.Count}");
+                        ReportOverallProgress($"Copying resolved files... {copiedSoFar} / {totalCopyJobs}");
 
                         reportLines.Add($"COPY | {sourceZipPath} | {internalPath} -> {destPath}");
                     }
+
+                    progressCallback?.Invoke(98, 100, "Writing report...");
 
                     var reportEntry = zout.CreateEntry("missingfilefix_report.txt", CompressionLevel.Optimal);
                     using (var reportStream = reportEntry.Open())
@@ -761,6 +801,8 @@ namespace BeamNGTextureFixer.Services
                     File.Delete(outPath);
 
                 File.Move(tempPath, outPath);
+
+                progressCallback?.Invoke(100, 100, "Build complete.");
 
                 return new BuildFixedResult
                 {
