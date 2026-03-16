@@ -202,6 +202,8 @@ namespace BeamNGTextureFixer.ViewModels
 
             ScanCommand = new RelayCommand(ScanMods);
             BuildCommand = new RelayCommand(BuildModsPlaceholder);
+
+            AbortCommand = new RelayCommand(AbortWork, () => CanAbort);
         }
 
 
