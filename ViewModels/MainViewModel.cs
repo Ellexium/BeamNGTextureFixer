@@ -19,6 +19,12 @@ namespace BeamNGTextureFixer.ViewModels
     public class MainViewModel : ViewModelBase
     {
 
+        private bool _replaceOriginalMod;
+        public bool ReplaceOriginalMod
+        {
+            get => _replaceOriginalMod;
+            set => SetProperty(ref _replaceOriginalMod, value);
+        }
         private static int CountMaterialFilesInZip(string zipPath, CancellationToken token)
         {
             try
@@ -485,6 +491,18 @@ namespace BeamNGTextureFixer.ViewModels
                 return;
             }
 
+            if (ReplaceOriginalMod)
+            {
+                var result = MessageBox.Show(
+                    "This will replace the original selected mod zip file(s).\n\nContinue?",
+                    "Replace Original Mod",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+            }
+
             BeginBusy();
             StatusText = "Building fixed mods...";
 
@@ -518,9 +536,11 @@ namespace BeamNGTextureFixer.ViewModels
                         {
                             token.ThrowIfCancellationRequested();
 
-                            var outPath = Path.Combine(
-                                Path.GetDirectoryName(row.ModZip) ?? "",
-                                Path.GetFileNameWithoutExtension(row.ModZip) + "_fixed.zip");
+                            var outPath = ReplaceOriginalMod
+                                ? row.ModZip
+                                : Path.Combine(
+                                    Path.GetDirectoryName(row.ModZip) ?? "",
+                                    Path.GetFileNameWithoutExtension(row.ModZip) + "_fixed.zip");
 
                             var result = row.Service.BuildFixedMod(
                                 outPath,

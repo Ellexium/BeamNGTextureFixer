@@ -170,6 +170,12 @@
                                 Width="160"
                                 Height="36"
                                 Command="{Binding BuildCommand}" />
+                        <CheckBox
+                                Content="Replace original mod instead of creating _fixed.zip"
+                                IsChecked="{Binding ReplaceOriginalMod}"
+                                Foreground="White"
+                                Height="16"
+                                Margin="10,0,10,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
