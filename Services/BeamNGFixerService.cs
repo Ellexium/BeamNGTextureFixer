@@ -170,7 +170,8 @@ namespace BeamNGTextureFixer.Services
                 var norm = PathHelpers.NormalizePath(entry.FullName);
                 modFileSet.Add(norm);
 
-                if (!norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase))
+                if (!(norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase) ||
+                      norm.EndsWith(".material.json", StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 materialPaths.Add(norm);
@@ -742,6 +743,10 @@ namespace BeamNGTextureFixer.Services
                             continue;
 
                         var norm = PathHelpers.NormalizePath(entry.FullName);
+
+                        if (string.Equals(norm, "missingfilefix_report.txt", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
 
                         if (MaterialJsonMap.TryGetValue(norm, out var jsonDoc) && jsonDoc is not null)
                         {

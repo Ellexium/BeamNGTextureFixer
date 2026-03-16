@@ -21,22 +21,40 @@ namespace BeamNGTextureFixer.ViewModels
 
         private static int CountMaterialFilesInZip(string zipPath, CancellationToken token)
         {
-            using var archive = ZipFile.OpenRead(zipPath);
-
-            int count = 0;
-            foreach (var entry in archive.Entries)
+            try
             {
-                token.ThrowIfCancellationRequested();
+                using var archive = ZipFile.OpenRead(zipPath);
 
-                if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
-                    continue;
+                int count = 0;
+                foreach (var entry in archive.Entries)
+                {
+                    token.ThrowIfCancellationRequested();
 
-                var norm = PathHelpers.NormalizePath(entry.FullName);
-                if (norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase))
-                    count++;
+                    if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
+                        continue;
+
+                    var norm = PathHelpers.NormalizePath(entry.FullName);
+                    if (norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase) ||
+                        norm.EndsWith(".material.json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
             }
-
-            return count;
+            catch (InvalidDataException)
+            {
+                return 0;
+            }
+            catch (IOException)
+            {
+                return 0;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return 0;
+            }
         }
 
         private CancellationTokenSource? _cts;
@@ -297,77 +315,100 @@ namespace BeamNGTextureFixer.ViewModels
                     {
                         token.ThrowIfCancellationRequested();
 
-                        var service = new BeamNGFixerService();
-
-                        var payload = service.Scan(
-                            modZip,
-                            OldContentFolder,
-                            string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder,
-                            token,
-                            (doneInThisMod, totalInThisMod, message) =>
-                            {
-                                int absoluteDone = globalProcessedMaterials + doneInThisMod;
-
-                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        try
+                        {
+                            var service = new BeamNGFixerService();
+                            var payload = service.Scan(
+                                modZip,
+                                OldContentFolder,
+                                string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder,
+                                token,
+                                (doneInThisMod, totalInThisMod, message) =>
                                 {
-                                    IsProgressIndeterminate = false;
-                                    ProgressMaximum = Math.Max(totalMaterialFiles, 1);
-                                    ProgressValue = Math.Min(absoluteDone, totalMaterialFiles);
-                                    StatusText = $"{Path.GetFileName(modZip)} - scanning materials... {Math.Min(absoluteDone, totalMaterialFiles)} / {totalMaterialFiles}";
+                                    int absoluteDone = globalProcessedMaterials + doneInThisMod;
+
+                                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                    {
+                                        IsProgressIndeterminate = false;
+                                        ProgressMaximum = Math.Max(totalMaterialFiles, 1);
+                                        ProgressValue = Math.Min(absoluteDone, totalMaterialFiles);
+                                        StatusText = $"{Path.GetFileName(modZip)} - scanning materials... {Math.Min(absoluteDone, totalMaterialFiles)} / {totalMaterialFiles}";
+                                    });
                                 });
-                            });
 
-                        globalProcessedMaterials += payload.MaterialFiles;
-
-                        var row = new BatchResultRow
-                        {
-                            ModZip = modZip,
-                            ModName = Path.GetFileName(modZip),
-                            MaterialFiles = payload.MaterialFiles,
-                            TextureRefs = payload.TextureRefs,
-                            PresentInMod = payload.PresentInMod,
-                            SatisfiedByCurrent = payload.SatisfiedByCurrent,
-                            ResolvedFromOld = payload.ResolvedFromOld,
-                            Unresolved = payload.Unresolved,
-                            BuildStatus = "not built",
-                            FixesMade = 0,
-                            OutZip = "",
-                            Service = service
-                        };
-
-                        var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(service.ModZipPath));
-                        var collisionCounts = service.BasenameCollisionsWithinSourceZip();
-
-                        foreach (var pair in payload.Results)
-                        {
-                            token.ThrowIfCancellationRequested();
-
-                            var newPath = "";
-
-                            if (pair.Hit.Status == "resolved_from_old")
-                                newPath = service.MakeMissingfilefixTarget(pair.Hit, modStem, collisionCounts);
-
-                            row.DetailRows.Add(new DetailRow
+                            var row = new BatchResultRow
                             {
-                                MaterialFile = pair.Ref.MaterialFile,
-                                ParseMode = pair.Ref.ExtractionMode,
-                                MaterialName = pair.Ref.MaterialName,
-                                StageIndex = pair.Ref.StageIndex,
-                                Key = pair.Ref.Key,
-                                OriginalPath = pair.Ref.OriginalValue,
-                                Status = pair.Hit.Status,
-                                MatchType = pair.Hit.MatchType,
-                                Source = !string.IsNullOrWhiteSpace(pair.Hit.SourceZipPath)
-                                    ? $"{Path.GetFileName(pair.Hit.SourceZipPath)} :: {pair.Hit.InternalPath}"
-                                    : pair.Hit.InternalPath ?? "",
-                                NewPath = newPath
+                                ModZip = modZip,
+                                ModName = Path.GetFileName(modZip),
+                                MaterialFiles = payload.MaterialFiles,
+                                TextureRefs = payload.TextureRefs,
+                                PresentInMod = payload.PresentInMod,
+                                SatisfiedByCurrent = payload.SatisfiedByCurrent,
+                                ResolvedFromOld = payload.ResolvedFromOld,
+                                Unresolved = payload.Unresolved,
+                                BuildStatus = "not built",
+                                FixesMade = 0,
+                                OutZip = "",
+                                Service = service
+                            };
+
+                            var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(service.ModZipPath));
+                            var collisionCounts = service.BasenameCollisionsWithinSourceZip();
+
+                            foreach (var pair in payload.Results)
+                            {
+                                token.ThrowIfCancellationRequested();
+
+                                var newPath = "";
+
+                                if (pair.Hit.Status == "resolved_from_old")
+                                    newPath = service.MakeMissingfilefixTarget(pair.Hit, modStem, collisionCounts);
+
+                                row.DetailRows.Add(new DetailRow
+                                {
+                                    MaterialFile = pair.Ref.MaterialFile,
+                                    ParseMode = pair.Ref.ExtractionMode,
+                                    MaterialName = pair.Ref.MaterialName,
+                                    StageIndex = pair.Ref.StageIndex,
+                                    Key = pair.Ref.Key,
+                                    OriginalPath = pair.Ref.OriginalValue,
+                                    Status = pair.Hit.Status,
+                                    MatchType = pair.Hit.MatchType,
+                                    Source = !string.IsNullOrWhiteSpace(pair.Hit.SourceZipPath)
+                                        ? $"{Path.GetFileName(pair.Hit.SourceZipPath)} :: {pair.Hit.InternalPath}"
+                                        : pair.Hit.InternalPath ?? "",
+                                    NewPath = newPath
+                                });
+                            }
+
+                            rows.Add(row);
+                            totalRefs += payload.TextureRefs;
+                            totalOld += payload.ResolvedFromOld;
+                            totalUnresolved += payload.Unresolved;
+                            globalProcessedMaterials += payload.MaterialFiles;
+                        }
+                        catch (InvalidDataException)
+                        {
+                            rows.Add(new BatchResultRow
+                            {
+                                ModZip = modZip,
+                                ModName = Path.GetFileName(modZip),
+                                BuildStatus = "invalid zip",
+                                FixesMade = 0,
+                                OutZip = ""
                             });
                         }
-
-                        rows.Add(row);
-                        totalRefs += payload.TextureRefs;
-                        totalOld += payload.ResolvedFromOld;
-                        totalUnresolved += payload.Unresolved;
+                        catch (IOException)
+                        {
+                            rows.Add(new BatchResultRow
+                            {
+                                ModZip = modZip,
+                                ModName = Path.GetFileName(modZip),
+                                BuildStatus = "read error",
+                                FixesMade = 0,
+                                OutZip = ""
+                            });
+                        }
                     }
 
                     return new

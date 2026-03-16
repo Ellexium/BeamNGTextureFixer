@@ -300,6 +300,30 @@
             <Setter Property="HeadersVisibility" Value="Column"/>
         </Style>
 
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#1B2027"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FontSize" Value="12"/>
+
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4"
+                    Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#1B2027"/>
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
@@ -307,6 +331,28 @@
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="Click to sort"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+
+            <Style.Triggers>
+
+                <!-- Hover highlight -->
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#232933"/>
+                </Trigger>
+
+                <!-- Sorted Asc -->
+                <Trigger Property="SortDirection" Value="Ascending">
+                    <Setter Property="Background" Value="#2A3340"/>
+                </Trigger>
+
+                <!-- Sorted Desc -->
+                <Trigger Property="SortDirection" Value="Descending">
+                    <Setter Property="Background" Value="#2A3340"/>
+                </Trigger>
+
+            </Style.Triggers>
         </Style>
 
         <Style TargetType="DataGridRow">
