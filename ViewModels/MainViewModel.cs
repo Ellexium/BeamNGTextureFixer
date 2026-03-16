@@ -19,6 +19,10 @@ namespace BeamNGTextureFixer.ViewModels
     public class MainViewModel : ViewModelBase
     {
 
+        public RelayCommand ClearOldCommand { get; }
+        public RelayCommand ClearCurrentCommand { get; }
+        public RelayCommand ClearModsCommand { get; }
+
         private bool _replaceOriginalMod;
         public bool ReplaceOriginalMod
         {
@@ -171,16 +175,35 @@ namespace BeamNGTextureFixer.ViewModels
         public RelayCommand BrowseModsCommand { get; }
         public RelayCommand ScanCommand { get; }
         public RelayCommand BuildCommand { get; }
+        private void ClearOldFolder()
+        {
+            OldContentFolder = string.Empty;
+        }
 
+        private void ClearCurrentFolder()
+        {
+            CurrentContentFolder = string.Empty;
+        }
+
+        private void ClearMods()
+        {
+            SelectedMods.Clear();
+            SelectedModsDisplay = string.Empty;
+        }
         public MainViewModel()
         {
             BrowseOldCommand = new RelayCommand(BrowseOldFolder);
             BrowseCurrentCommand = new RelayCommand(BrowseCurrentFolder);
             BrowseModsCommand = new RelayCommand(BrowseMods);
+
+            ClearOldCommand = new RelayCommand(ClearOldFolder);
+            ClearCurrentCommand = new RelayCommand(ClearCurrentFolder);
+            ClearModsCommand = new RelayCommand(ClearMods);
+
             ScanCommand = new RelayCommand(ScanMods);
             BuildCommand = new RelayCommand(BuildModsPlaceholder);
-            AbortCommand = new RelayCommand(AbortWork, () => CanAbort);
         }
+
 
         private void BeginBusy()
         {

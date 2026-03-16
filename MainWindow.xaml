@@ -118,7 +118,9 @@
                                VerticalAlignment="Center"/>
                     <Grid Grid.Row="0" Grid.Column="1" Margin="12,0">
                         <TextBox x:Name="OldContentFolderTextBox"
-                                   Text="{Binding OldContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                                   Text="{Binding OldContentFolder, UpdateSourceTrigger=PropertyChanged}"
+                                    Cursor="Hand"
+                                    PreviewMouseLeftButtonDown="OldContentFolder_Click"/>
                         <TextBlock Text="Source for recovering missing textures from older BeamNG content"
                                    Foreground="#7F8792"
                                    Margin="12,7,36,7"
@@ -139,8 +141,8 @@
 
                     <Button Grid.Row="0"
                             Grid.Column="2"
-                            Content="Browse"
-                            Command="{Binding BrowseOldCommand}" />
+                            Content="Clear"
+                            Command="{Binding ClearOldCommand}" />
 
                     <TextBlock Grid.Row="1"
                                Grid.Column="0"
@@ -149,7 +151,9 @@
                                VerticalAlignment="Center"/>
                     <Grid Grid.Row="1" Grid.Column="1" Margin="12,12,12,0">
                         <TextBox x:Name="CurrentContentFolderTextBox"
-                                  Text="{Binding CurrentContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                                  Text="{Binding CurrentContentFolder, UpdateSourceTrigger=PropertyChanged}"
+                                  Cursor="Hand"
+                                  PreviewMouseLeftButtonDown="CurrentContentFolder_Click"/>
                         <TextBlock Text="Used to detect textures already provided by the current game"
                                    Foreground="#7F8792"
                                    Margin="12,7,36,7"
@@ -169,8 +173,8 @@
                     <Button Grid.Row="1"
                             Grid.Column="2"
                             Margin="0,12,0,0"
-                            Content="Browse"
-                            Command="{Binding BrowseCurrentCommand}" />
+                            Content="Clear"
+                            Command="{Binding ClearCurrentCommand}" />
 
                     <TextBlock Grid.Row="2"
                                Grid.Column="0"
@@ -202,8 +206,8 @@
                     <Button Grid.Row="2"
                             Grid.Column="2"
                             Margin="0,12,0,0"
-                            Content="Browse"
-                            Command="{Binding BrowseModsCommand}" />
+                            Content="Clear"
+                            Command="{Binding ClearModsCommand}" />
 
                     <StackPanel Grid.Row="3"
                                 Grid.Column="0"

@@ -8,6 +8,18 @@ namespace BeamNGTextureFixer
 {
     public partial class MainWindow : Window
     {
+
+        private void OldContentFolder_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (DataContext is MainViewModel vm && vm.BrowseOldCommand.CanExecute(null))
+                vm.BrowseOldCommand.Execute(null);
+        }
+
+        private void CurrentContentFolder_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (DataContext is MainViewModel vm && vm.BrowseCurrentCommand.CanExecute(null))
+                vm.BrowseCurrentCommand.Execute(null);
+        }
         private void SelectedModsTextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (DataContext is MainViewModel vm && vm.BrowseModsCommand.CanExecute(null))
