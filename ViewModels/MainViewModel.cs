@@ -491,6 +491,17 @@ namespace BeamNGTextureFixer.ViewModels
                 return;
             }
 
+            var remainingRows = BatchResults
+                .Where(x => !string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase)
+                         && x.ResolvedFromOld > 0)
+                .ToList();
+
+            if (remainingRows.Count == 0)
+            {
+                StatusText = "All fixable mods are already built.";
+                return;
+            }
+
             if (ReplaceOriginalMod)
             {
                 var result = MessageBox.Show(
@@ -502,6 +513,9 @@ namespace BeamNGTextureFixer.ViewModels
                 if (result != MessageBoxResult.Yes)
                     return;
             }
+
+            var allRows = BatchResults.ToList();
+            var rowsToBuild = remainingRows;
 
             BeginBusy();
             StatusText = "Building fixed mods...";
@@ -516,10 +530,8 @@ namespace BeamNGTextureFixer.ViewModels
             {
                 var selectedPathBeforeRefresh = SelectedBatchResult?.ModZip;
 
-                var allRows = BatchResults.ToList();
-                var rowsToBuild = allRows
-                    .Where(x => !string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+
+
 
                 var buildOutcome = await Task.Run(() =>
                 {

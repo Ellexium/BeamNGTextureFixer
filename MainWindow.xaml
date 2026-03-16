@@ -116,10 +116,27 @@
                                Grid.Column="0"
                                Text="Old BeamNG Content Folder"
                                VerticalAlignment="Center"/>
-                    <TextBox Grid.Row="0"
-                             Grid.Column="1"
-                             Margin="12,0"
-                             Text="{Binding OldContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                    <Grid Grid.Row="0" Grid.Column="1" Margin="12,0">
+                        <TextBox x:Name="OldContentFolderTextBox"
+                                   Text="{Binding OldContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Source for recovering missing textures from older BeamNG content"
+                                   Foreground="#7F8792"
+                                   Margin="12,7,36,7"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=OldContentFolderTextBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+
                     <Button Grid.Row="0"
                             Grid.Column="2"
                             Content="Browse"
@@ -130,10 +147,25 @@
                                Margin="0,12,0,0"
                                Text="Current BeamNG Content Folder"
                                VerticalAlignment="Center"/>
-                    <TextBox Grid.Row="1"
-                             Grid.Column="1"
-                             Margin="12,12,12,0"
-                             Text="{Binding CurrentContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                    <Grid Grid.Row="1" Grid.Column="1" Margin="12,12,12,0">
+                        <TextBox x:Name="CurrentContentFolderTextBox"
+                                  Text="{Binding CurrentContentFolder, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Used to detect textures already provided by the current game"
+                                   Foreground="#7F8792"
+                                   Margin="12,7,36,7"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=CurrentContentFolderTextBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                     <Button Grid.Row="1"
                             Grid.Column="2"
                             Margin="0,12,0,0"
@@ -145,11 +177,28 @@
                                Margin="0,12,0,0"
                                Text="Target Mod Zip(s)"
                                VerticalAlignment="Center"/>
-                    <TextBox Grid.Row="2"
-                             Grid.Column="1"
-                             Margin="12,12,12,0"
-                             Text="{Binding SelectedModsDisplay}"
-                             IsReadOnly="True" />
+                    <Grid Grid.Row="2" Grid.Column="1" Margin="12,12,12,0">
+                        <TextBox x:Name="SelectedModsTextBox"
+                                     Text="{Binding SelectedModsDisplay}"
+                                     IsReadOnly="True"
+                                     Cursor="Hand"
+                                     PreviewMouseLeftButtonDown="SelectedModsTextBox_PreviewMouseLeftButtonDown" />
+                        <TextBlock Text="Select one or more target mod zip files to scan and fix"
+                                   Foreground="#7F8792"
+                                   Margin="12,7,36,7"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=SelectedModsTextBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
                     <Button Grid.Row="2"
                             Grid.Column="2"
                             Margin="0,12,0,0"

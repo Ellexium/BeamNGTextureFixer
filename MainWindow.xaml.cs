@@ -1,11 +1,22 @@
 ﻿using System.ComponentModel;
 using System.Windows;
 using BeamNGTextureFixer.ViewModels;
+using System.Windows.Input;
+
 
 namespace BeamNGTextureFixer
 {
     public partial class MainWindow : Window
     {
+        private void SelectedModsTextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (DataContext is MainViewModel vm && vm.BrowseModsCommand.CanExecute(null))
+            {
+                vm.BrowseModsCommand.Execute(null);
+                e.Handled = true;
+            }
+        }
+
         private bool _closingAfterAbort;
 
         public MainWindow()
