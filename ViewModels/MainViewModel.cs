@@ -163,6 +163,7 @@ namespace BeamNGTextureFixer.ViewModels
                 {
                     LoadDetailRows(value);
                     IsBusy = false;
+                    ExportTextureReportCommand.RaiseCanExecuteChanged();
                     UpdateStatusSummary();
                 }
             }
@@ -175,6 +176,8 @@ namespace BeamNGTextureFixer.ViewModels
         public RelayCommand BrowseModsCommand { get; }
         public RelayCommand ScanCommand { get; }
         public RelayCommand BuildCommand { get; }
+
+        public RelayCommand ExportTextureReportCommand { get; }
         private void ClearOldFolder()
         {
             OldContentFolder = string.Empty;
@@ -204,9 +207,79 @@ namespace BeamNGTextureFixer.ViewModels
             BuildCommand = new RelayCommand(BuildModsPlaceholder);
 
             AbortCommand = new RelayCommand(AbortWork, () => CanAbort);
+
+            ExportTextureReportCommand = new RelayCommand(ExportTextureReport, () => SelectedBatchResult is not null && DetailRows.Count > 0);
         }
 
+        private void ExportTextureReport()
+        {
+            if (SelectedBatchResult is null)
+            {
+                MessageBox.Show("No mod selected.", "Export Texture Report");
+                return;
+            }
 
+            try
+            {
+                var modZipPath = SelectedBatchResult.ModZip;
+                var modFolder = Path.GetDirectoryName(modZipPath);
+
+                if (string.IsNullOrWhiteSpace(modFolder) || !Directory.Exists(modFolder))
+                {
+                    MessageBox.Show("Could not determine the mod folder.", "Export Texture Report");
+                    return;
+                }
+
+                var modNameWithoutExt = Path.GetFileNameWithoutExtension(SelectedBatchResult.ModName);
+                var reportPath = Path.Combine(modFolder, $"{modNameWithoutExt}- texture report.csv");
+
+                var lines = new List<string>
+        {
+            string.Join(",",
+                Csv("Material File"),
+                Csv("Mode"),
+                Csv("Material"),
+                Csv("Stage"),
+                Csv("Key"),
+                Csv("Original Path"),
+                Csv("Status"),
+                Csv("Match Type"),
+                Csv("Source"),
+                Csv("New Path"))
+        };
+
+                foreach (var row in DetailRows)
+                {
+                    lines.Add(string.Join(",",
+                        Csv(row.MaterialFile),
+                        Csv(row.ParseMode),
+                        Csv(row.MaterialName),
+                        Csv(row.StageIndex.ToString()),
+                        Csv(row.Key),
+                        Csv(row.OriginalPath),
+                        Csv(row.Status),
+                        Csv(row.MatchType),
+                        Csv(row.Source),
+                        Csv(row.NewPath)));
+                }
+
+                File.WriteAllLines(reportPath, lines);
+
+                StatusText = $"Texture report exported: {Path.GetFileName(reportPath)}";
+                MessageBox.Show($"Texture report saved to:\n{reportPath}", "Export Complete");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Export Texture Report");
+            }
+        }
+
+        private static string Csv(string? value)
+        {
+            value ??= string.Empty;
+            value = value.Replace("\"", "\"\"");
+            return $"\"{value}\"";
+        }
         private void BeginBusy()
         {
             _cts?.Dispose();
@@ -501,11 +574,13 @@ namespace BeamNGTextureFixer.ViewModels
             if (row is null)
             {
                 DetailRows = new List<DetailRow>();
+                ExportTextureReportCommand.RaiseCanExecuteChanged();
                 UpdateStatusSummary();
                 return;
             }
 
             DetailRows = row.DetailRows.ToList();
+            ExportTextureReportCommand.RaiseCanExecuteChanged();
             UpdateStatusSummary();
         }
         private async void BuildModsPlaceholder()

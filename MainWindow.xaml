@@ -321,22 +321,28 @@
                                 Padding="16" Grid.RowSpan="2">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="133"/>
-                                    <ColumnDefinition Width="7"/>
+                                    <ColumnDefinition Width="220"/>
+                                    <ColumnDefinition Width="12"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="170"/>
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Column="0"
-                                           Text="Selected Mod Requiring Fixes"
-                                           VerticalAlignment="Center" Grid.ColumnSpan="3" Margin="0,0,1,0"/>
-                                
-                                <!-- ItemsSource="{Binding BatchResults}" - show everything, not just fixable -->
-                                <!-- ItemsSource="{Binding FixableMods}" - self explanatory -->
+                                           Text="Selected Mod"
+                                           VerticalAlignment="Center"/>
+
                                 <ComboBox Grid.Column="2"
-                                          Margin="31,0,0,0"
                                           ItemsSource="{Binding BatchResults}"
                                           SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
-                                          DisplayMemberPath="ModName"/>
+                                          DisplayMemberPath="ModName"
+                                          VerticalAlignment="Center"/>
+
+                                <Button Grid.Column="4"
+                                        Content="Export CSV Report"
+                                        Height="30"
+                                        Command="{Binding ExportTextureReportCommand}"
+                                        VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
 
