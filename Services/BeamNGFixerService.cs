@@ -33,6 +33,7 @@ namespace BeamNGTextureFixer.Services
             "emissiveMap",
             "instanceColorMap",
             "layerMap",
+            "overlayMap"
         };
 
         // Shared folder-index cache across all service instances
@@ -98,6 +99,29 @@ namespace BeamNGTextureFixer.Services
             }
         }
 
+
+        private static bool IsMaterialFilePath(string normPath)
+        {
+            return normPath.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase)
+                || normPath.EndsWith(".material.json", StringComparison.OrdinalIgnoreCase)
+                || normPath.EndsWith("materials.cs", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string StripLineComments(string text)
+        {
+            return Regex.Replace(text, @"//.*?$", "", RegexOptions.Multiline);
+        }
+
+        private static string UnquoteMaterialName(string name)
+        {
+            name = name.Trim();
+
+            if (name.Length >= 2 && name.StartsWith("\"") && name.EndsWith("\""))
+                return name.Substring(1, name.Length - 2);
+
+            return name;
+        }
+
         private void ClearScanState()
         {
             foreach (var doc in MaterialJsonMap.Values)
@@ -155,7 +179,7 @@ namespace BeamNGTextureFixer.Services
                     return false;
 
                 var norm = PathHelpers.NormalizePath(entry.FullName);
-                return norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase);
+                return IsMaterialFilePath(norm);
             });
 
             int processedMaterialFilesInThisMod = 0;
@@ -170,8 +194,7 @@ namespace BeamNGTextureFixer.Services
                 var norm = PathHelpers.NormalizePath(entry.FullName);
                 modFileSet.Add(norm);
 
-                if (!(norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase) ||
-                      norm.EndsWith(".material.json", StringComparison.OrdinalIgnoreCase)))
+                if (!IsMaterialFilePath(norm))
                     continue;
 
                 materialPaths.Add(norm);
@@ -181,18 +204,32 @@ namespace BeamNGTextureFixer.Services
                 var rawText = reader.ReadToEnd();
                 materialTextMap[norm] = rawText;
 
-                try
+                if (norm.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 {
-                    materialJsonMap[norm] = JsonDocument.Parse(rawText);
-                    materialInfos.Add(new MaterialFileInfo
+                    try
                     {
-                        Path = norm,
-                        ParseMode = "pending",
-                        RefCount = 0,
-                        Error = string.Empty
-                    });
+                        materialJsonMap[norm] = JsonDocument.Parse(rawText);
+                        materialInfos.Add(new MaterialFileInfo
+                        {
+                            Path = norm,
+                            ParseMode = "pending",
+                            RefCount = 0,
+                            Error = string.Empty
+                        });
+                    }
+                    catch (JsonException ex)
+                    {
+                        materialJsonMap[norm] = null;
+                        materialInfos.Add(new MaterialFileInfo
+                        {
+                            Path = norm,
+                            ParseMode = "pending",
+                            RefCount = 0,
+                            Error = ex.Message
+                        });
+                    }
                 }
-                catch (JsonException ex)
+                else
                 {
                     materialJsonMap[norm] = null;
                     materialInfos.Add(new MaterialFileInfo
@@ -200,7 +237,7 @@ namespace BeamNGTextureFixer.Services
                         Path = norm,
                         ParseMode = "pending",
                         RefCount = 0,
-                        Error = ex.Message
+                        Error = string.Empty
                     });
                 }
 
@@ -353,6 +390,57 @@ namespace BeamNGTextureFixer.Services
             return refs;
         }
 
+
+        private List<TextureRef> ExtractCsTextureRefs(string matFile, string rawText)
+        {
+            var refs = new List<TextureRef>();
+            var text = StripLineComments(rawText);
+
+            var blockPattern = new Regex(
+                "singleton\\s+Material\\s*\\(\\s*(?<name>(\"[^\"]+\"|[^)\\r\\n]+))\\s*\\)\\s*\\{(?<body>.*?)\\};",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            var assignmentPattern = new Regex(
+                "(?<key>[A-Za-z_][A-Za-z0-9_]*)(?:\\[(?<stage>\\d+)\\])?\\s*=\\s*\"(?<value>[^\"]*)\"\\s*;",
+                RegexOptions.IgnoreCase);
+
+            foreach (Match blockMatch in blockPattern.Matches(text))
+            {
+                var materialName = UnquoteMaterialName(blockMatch.Groups["name"].Value);
+                var body = blockMatch.Groups["body"].Value;
+
+                foreach (Match assign in assignmentPattern.Matches(body))
+                {
+                    var key = assign.Groups["key"].Value;
+                    if (!TextureKeys.Contains(key))
+                        continue;
+
+                    var value = assign.Groups["value"].Value;
+                    var v = value.Trim();
+
+                    if (string.IsNullOrWhiteSpace(v) || v.StartsWith("@"))
+                        continue;
+
+                    int stageIndex = 0;
+                    if (assign.Groups["stage"].Success)
+                        int.TryParse(assign.Groups["stage"].Value, out stageIndex);
+
+                    refs.Add(new TextureRef
+                    {
+                        MaterialFile = matFile,
+                        MaterialName = materialName,
+                        StageIndex = stageIndex,
+                        Key = key,
+                        OriginalValue = value,
+                        NormalizedValue = PathHelpers.NormalizePath(value),
+                        ExtractionMode = "cs"
+                    });
+                }
+            }
+
+            return refs;
+        }
+
         private (List<TextureRef> refs, List<MaterialFileInfo> infos) ExtractTextureRefs(
             List<string> materialPaths,
             Dictionary<string, JsonDocument?> materialJsonMap,
@@ -366,6 +454,18 @@ namespace BeamNGTextureFixer.Services
             foreach (var matFile in materialPaths)
             {
                 token.ThrowIfCancellationRequested();
+
+                if (matFile.EndsWith("materials.cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    var rawText = materialTextMap.TryGetValue(matFile, out var csText) ? csText : string.Empty;
+                    var csRefs = ExtractCsTextureRefs(matFile, rawText);
+                    refs.AddRange(csRefs);
+
+                    infoLookup[matFile].ParseMode = csRefs.Count > 0 ? "cs" : "unreadable";
+                    infoLookup[matFile].RefCount = csRefs.Count;
+                    continue;
+                }
+
                 if (materialJsonMap.TryGetValue(matFile, out var data) && data is not null)
                 {
                     var jsonRefs = ExtractJsonTextureRefs(matFile, data);
@@ -375,8 +475,8 @@ namespace BeamNGTextureFixer.Services
                     continue;
                 }
 
-                var rawText = materialTextMap.TryGetValue(matFile, out var text) ? text : string.Empty;
-                var fallbackRefs = ExtractTextFallbackRefs(matFile, rawText);
+                var rawTextFallback = materialTextMap.TryGetValue(matFile, out var text) ? text : string.Empty;
+                var fallbackRefs = ExtractTextFallbackRefs(matFile, rawTextFallback);
                 refs.AddRange(fallbackRefs);
 
                 if (fallbackRefs.Count > 0)
@@ -759,7 +859,13 @@ namespace BeamNGTextureFixer.Services
                         }
                         else if (MaterialTextMap.TryGetValue(norm, out var rawText) && plan.RewritesByText.TryGetValue(norm, out var textRewrites))
                         {
-                            var updatedText = RewriteTextMaterial(norm, rawText, textRewrites, reportLines);
+                            string updatedText;
+
+                            if (norm.EndsWith("materials.cs", StringComparison.OrdinalIgnoreCase))
+                                updatedText = RewriteCsMaterial(norm, rawText, textRewrites, reportLines);
+                            else
+                                updatedText = RewriteTextMaterial(norm, rawText, textRewrites, reportLines);
+
                             var outEntry = zout.CreateEntry(entry.FullName, CompressionLevel.Optimal);
 
                             using var outStream = outEntry.Open();
@@ -938,6 +1044,53 @@ namespace BeamNGTextureFixer.Services
             writer.Flush();
 
             return Encoding.UTF8.GetString(output.ToArray());
+        }
+
+
+        private string RewriteCsMaterial(string materialFile, string rawText, List<TextRewrite> rewrites, List<string> reportLines)
+        {
+            var updated = rawText;
+
+            foreach (var rewrite in rewrites)
+            {
+                var keyEscaped = Regex.Escape(rewrite.Key);
+                var oldEscaped = Regex.Escape(rewrite.OldValue);
+                var stagePattern = $"(?<prefix>\\b{keyEscaped}\\s*\\[\\s*\\d+\\s*\\]\\s*=\\s*\"){oldEscaped}(?<suffix>\"\\s*;)";
+                var flatPattern = $"(?<prefix>\\b{keyEscaped}\\s*=\\s*\"){oldEscaped}(?<suffix>\"\\s*;)";
+
+                bool replaced = false;
+
+                updated = Regex.Replace(updated, stagePattern, m =>
+                {
+                    if (replaced) return m.Value;
+                    replaced = true;
+                    return $"{m.Groups["prefix"].Value}{rewrite.NewPath}{m.Groups["suffix"].Value}";
+                }, RegexOptions.IgnoreCase);
+
+                if (!replaced)
+                {
+                    updated = Regex.Replace(updated, flatPattern, m =>
+                    {
+                        if (replaced) return m.Value;
+                        replaced = true;
+                        return $"{m.Groups["prefix"].Value}{rewrite.NewPath}{m.Groups["suffix"].Value}";
+                    }, RegexOptions.IgnoreCase);
+                }
+
+                if (!replaced)
+                {
+                    var idx = updated.IndexOf(rewrite.OldValue, StringComparison.Ordinal);
+                    if (idx >= 0)
+                    {
+                        updated = updated.Remove(idx, rewrite.OldValue.Length).Insert(idx, rewrite.NewPath);
+                        replaced = true;
+                    }
+                }
+
+                reportLines.Add($"REWRITE CS | {materialFile} | {rewrite.Key} | {rewrite.OldValue} -> {rewrite.NewPath}");
+            }
+
+            return updated;
         }
 
         private string RewriteTextMaterial(string materialFile, string rawText, List<TextRewrite> rewrites, List<string> reportLines)

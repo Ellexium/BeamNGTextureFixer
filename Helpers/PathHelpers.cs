@@ -1,6 +1,7 @@
-﻿using System.IO;
-using System.Text.RegularExpressions;
+﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
 
 namespace BeamNGTextureFixer.Helpers
 {
@@ -10,8 +11,13 @@ namespace BeamNGTextureFixer.Helpers
         {
             p ??= string.Empty;
             p = p.Trim().Replace("\\", "/");
+
+            if (p.StartsWith("game:", StringComparison.OrdinalIgnoreCase))
+                p = p.Substring(5);
+
             while (p.StartsWith("/"))
                 p = p[1..];
+
             return p;
         }
 

@@ -45,7 +45,8 @@ namespace BeamNGTextureFixer.ViewModels
 
                     var norm = PathHelpers.NormalizePath(entry.FullName);
                     if (norm.EndsWith(".materials.json", StringComparison.OrdinalIgnoreCase) ||
-                        norm.EndsWith(".material.json", StringComparison.OrdinalIgnoreCase))
+                        norm.EndsWith(".material.json", StringComparison.OrdinalIgnoreCase) ||
+                        norm.EndsWith("materials.cs", StringComparison.OrdinalIgnoreCase))
                     {
                         count++;
                     }
