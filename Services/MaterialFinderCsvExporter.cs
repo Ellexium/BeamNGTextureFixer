@@ -360,6 +360,15 @@ namespace BeamNGTextureFixer.Services
             };
         }
 
+
+        private static string BuildGeneratedTargetPath(string modZipPath)
+        {
+            var modName = Path.GetFileNameWithoutExtension(modZipPath) ?? "";
+            if (string.IsNullOrWhiteSpace(modName))
+                return "tfgenerated.materials.json";
+
+            return "tfgenerated.materials.json";
+        }
         private static string FormatDefinitionLocations(IEnumerable<MaterialDefinitionRecord> definitions)
         {
             return string.Join(" | ",

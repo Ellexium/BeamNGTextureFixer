@@ -353,31 +353,48 @@ namespace BeamNGTextureFixer.ViewModels
                 return;
             }
 
-            if (SelectedBatchResult.GeneratedMaterialDefinitionResult is null)
-            {
-                MessageBox.Show("No third pass report is available for the selected mod yet.", "Third Pass");
-                return;
-            }
-
             try
             {
-                var service = new GeneratedMaterialDefinitionService();
+                var csvPath = Path.Combine(
+                    Path.GetDirectoryName(SelectedBatchResult.ModZip) ?? "",
+                    Path.GetFileNameWithoutExtension(SelectedBatchResult.ModZip) + " - third pass table.csv");
 
-                var csvPath = service.ExportCsv(
-                    SelectedBatchResult.GeneratedMaterialDefinitionResult,
-                    SelectedBatchResult.ModZip);
+                using var writer = new StreamWriter(csvPath, false, new System.Text.UTF8Encoding(true));
 
-                var jsonPath = service.ExportGeneratedJsonPreview(
-                    SelectedBatchResult.GeneratedMaterialDefinitionResult,
-                    SelectedBatchResult.ModZip);
+                WriteCsvRow(writer, new[]
+                {
+                    "Material",
+                    "Pre-Status",
+                    "Should Localize",
+                    "Action Taken",
+                    "Imported From",
+                    "Injected Into",
+                    "Textures Copied",
+                    "Final Status",
+                    "Notes"
+                });
 
-                MessageBox.Show(
-                    $"Third pass report exported:\n\nCSV:\n{csvPath}\n\nGenerated JSON preview:\n{jsonPath}",
-                    "Third Pass");
+                foreach (var row in ThirdPassRows)
+                {
+                    WriteCsvRow(writer, new[]
+                    {
+                        row.MaterialName,
+                        row.PreStatus,
+                        row.ShouldLocalize,
+                        row.ActionTaken,
+                        row.ImportedFrom,
+                        row.InjectedInto,
+                        row.TexturesCopied.ToString(),
+                        row.FinalStatus,
+                        row.Notes
+                    });
+                }
+
+                MessageBox.Show($"Third pass table exported:\n\n{csvPath}", "Third Pass");
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to export third pass report:\n\n" + ex.Message, "Third Pass");
+                MessageBox.Show("Failed to export third pass table:\n\n" + ex.Message, "Third Pass");
             }
         }
 
@@ -838,7 +855,7 @@ namespace BeamNGTextureFixer.ViewModels
             DetailRows = row.DetailRows.ToList();
 
             BindSecondPass(row.MaterialFinderResult);
-            BindThirdPass(row.GeneratedMaterialDefinitionResult);
+            BindThirdPass(row);
 
             UpdateStatusSummary();
         }
@@ -853,6 +870,9 @@ namespace BeamNGTextureFixer.ViewModels
             }
 
             var rows = result.Issues
+                .Where(x =>
+                    !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
                 .Select(issue =>
                 {
@@ -934,41 +954,109 @@ namespace BeamNGTextureFixer.ViewModels
             return "";
         }
 
-        private void BindThirdPass(GeneratedMaterialDefinitionResult? result)
+        private void BindThirdPass(BatchResultRow? batchRow)
         {
-            if (result is null)
+            if (batchRow?.MaterialFinderResult is null)
             {
                 ThirdPassRows = new List<ThirdPassRow>();
                 ThirdPassSummaryText = "No third pass data yet.";
                 return;
             }
 
-            var rows = result.Candidates
-                .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
-                .Select(candidate => new ThirdPassRow
-                {
-                    MaterialName = candidate.MaterialName,
-                    PreStatus = "referenced_but_undefined",
-                    ActionTaken = candidate.GenerationStatus,
-                    ImportedFrom = BuildThirdPassImportedFrom(candidate),
-                    InjectedInto = candidate.GenerationStatus == "no_generated_candidate"
+            var issueRows = batchRow.MaterialFinderResult.Issues
+                    .Where(x =>
+                        !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
+                    .Select(issue =>
+                    {
+                    var primaryDef = PickPrimaryDefinition(issue.Definitions);
+
+                        bool isReferenced =
+                            !string.Equals(issue.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(issue.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
+
+                        bool shouldLocalize =
+                            isReferenced &&
+                            primaryDef is not null &&
+                            !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase);
+
+                        string importedFrom = primaryDef is null
                         ? ""
-                        : "tfgenerated.materials.json",
-                    TexturesCopied = candidate.Slots.Values.Count(v => v is not null),
-                    FinalStatus = candidate.GenerationStatus,
-                    Notes = candidate.GenerationExplanation
+                        : $"{primaryDef.Origin} :: {primaryDef.SourceArchivePath} :: {primaryDef.SourcePath}";
+
+                    string injectedInto = shouldLocalize
+                        ? "tfgenerated.materials.json"
+                        : "";
+
+                    string actionTaken = shouldLocalize
+                        ? "recreate definition in tfgenerated.materials.json"
+                        : "leave as-is";
+
+                    string finalStatus = shouldLocalize
+                        ? "ready_for_aggressive_localize"
+                        : "no_aggressive_action_needed";
+
+                    string notes;
+                    if (primaryDef is null)
+                    {
+                        notes = issue.IssueType == "referenced_but_undefined"
+                            ? "No definition was found anywhere, so aggressive localization cannot copy a real external definition yet."
+                            : "No primary definition found.";
+                    }
+                    else if (shouldLocalize)
+                    {
+                        notes = "Definition exists outside the mod. Aggressive pass should recreate this material locally in tfgenerated.materials.json.";
+                    }
+                    else
+                    {
+                        notes = "Definition is already inside the mod, so aggressive localization is not needed.";
+                    }
+
+                    int textureCount = primaryDef?.TextureRefs.Count ?? 0;
+
+                    return new ThirdPassRow
+                    {
+                        MaterialName = issue.MaterialName,
+                        PreStatus = issue.IssueType,
+                        ShouldLocalize = shouldLocalize ? "Yes" : "No",
+                        ActionTaken = actionTaken,
+                        ImportedFrom = importedFrom,
+                        InjectedInto = injectedInto,
+                        TexturesCopied = textureCount,
+                        FinalStatus = finalStatus,
+                        Notes = notes
+                    };
                 })
                 .ToList();
 
-            ThirdPassRows = rows;
+            ThirdPassRows = issueRows;
 
             ThirdPassSummaryText =
-                $"Third Pass generated-material candidates: {rows.Count}\n" +
-                $"Buildable generated candidates: {rows.Count(x => x.FinalStatus == "buildable_generated_candidate")}\n" +
-                $"Partial generated candidates: {rows.Count(x => x.FinalStatus == "partial_generated_candidate")}\n" +
-                $"No suggestion: {rows.Count(x => x.FinalStatus == "no_generated_candidate")}";
+                $"Third Pass materials tracked: {issueRows.Count}\n" +
+                $"Should localize: {issueRows.Count(x => x.ShouldLocalize == "Yes")}\n" +
+                $"Already local to mod: {issueRows.Count(x => x.ShouldLocalize == "No")}";
         }
 
+        private static MaterialDefinitionRecord? PickPrimaryDefinition(IEnumerable<MaterialDefinitionRecord> definitions)
+        {
+            return definitions
+                .OrderBy(d => DefinitionOriginPriority(d.Origin))
+                .ThenBy(d => d.SourceArchivePath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(d => d.SourcePath, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+        }
+
+        private static int DefinitionOriginPriority(string? origin)
+        {
+            return origin switch
+            {
+                "mod" => 0,
+                "current_content" => 1,
+                "old_content" => 2,
+                _ => 9
+            };
+        }
         private static string BuildThirdPassImportedFrom(GeneratedMaterialCandidate candidate)
         {
             var sources = new List<string>();
