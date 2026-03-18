@@ -441,6 +441,35 @@ namespace BeamNGTextureFixer.ViewModels
                                     });
                                 });
 
+
+                            var finder = new MaterialFinderService();
+                            var finderResult = finder.Scan(
+                                new MaterialFinderRequest
+                                {
+                                    ModZipPath = modZip,
+                                    CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                                    OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
+                                    ScanReferencesInContentFolders = false
+                                },
+                                token);
+
+                            MaterialFinderCsvExporter.Export(finderResult, modZip);
+
+                            var generatedService = new GeneratedMaterialDefinitionService();
+
+                            var generatedResult = generatedService.BuildSuggestions(
+                                new GeneratedMaterialDefinitionRequest
+                                {
+                                    ModZipPath = modZip,
+                                    CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                                    OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
+                                },
+                                finderResult,
+                                token);
+
+                            generatedService.ExportCsv(generatedResult, modZip);
+                            generatedService.ExportGeneratedJsonPreview(generatedResult, modZip);
+
                             var row = new BatchResultRow
                             {
                                 ModZip = modZip,
