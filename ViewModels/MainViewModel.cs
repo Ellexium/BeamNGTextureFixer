@@ -154,6 +154,34 @@ namespace BeamNGTextureFixer.ViewModels
             set => SetProperty(ref _detailRows, value);
         }
 
+        private List<SecondPassRow> _secondPassRows = new();
+        public List<SecondPassRow> SecondPassRows
+        {
+            get => _secondPassRows;
+            set => SetProperty(ref _secondPassRows, value);
+        }
+
+        private List<ThirdPassRow> _thirdPassRows = new();
+        public List<ThirdPassRow> ThirdPassRows
+        {
+            get => _thirdPassRows;
+            set => SetProperty(ref _thirdPassRows, value);
+        }
+
+        private string _secondPassSummaryText = "No second pass data yet.";
+        public string SecondPassSummaryText
+        {
+            get => _secondPassSummaryText;
+            set => SetProperty(ref _secondPassSummaryText, value);
+        }
+
+        private string _thirdPassSummaryText = "No third pass data yet.";
+        public string ThirdPassSummaryText
+        {
+            get => _thirdPassSummaryText;
+            set => SetProperty(ref _thirdPassSummaryText, value);
+        }
+
         private BatchResultRow? _selectedBatchResult;
         public BatchResultRow? SelectedBatchResult
         {
@@ -179,6 +207,9 @@ namespace BeamNGTextureFixer.ViewModels
         public RelayCommand BuildCommand { get; }
 
         public RelayCommand ExportTextureReportCommand { get; }
+        public RelayCommand ExportMaterialReportCommand { get; }
+        public RelayCommand ExportThirdPassReportCommand { get; }
+
         private void ClearOldFolder()
         {
             OldContentFolder = string.Empty;
@@ -209,71 +240,226 @@ namespace BeamNGTextureFixer.ViewModels
 
             AbortCommand = new RelayCommand(AbortWork, () => CanAbort);
 
-            ExportTextureReportCommand = new RelayCommand(ExportTextureReport, () => SelectedBatchResult is not null && DetailRows.Count > 0);
+            ExportTextureReportCommand = new RelayCommand(ExportTextureReport);
+            ExportMaterialReportCommand = new RelayCommand(ExportMaterialReport);
+            ExportThirdPassReportCommand = new RelayCommand(ExportThirdPassReport);
+
+            // ExportTextureReportCommand = new RelayCommand(ExportTextureReport, () => SelectedBatchResult is not null && DetailRows.Count > 0);
         }
 
         private void ExportTextureReport()
         {
             if (SelectedBatchResult is null)
             {
-                MessageBox.Show("No mod selected.", "Export Texture Report");
+                MessageBox.Show("Select a mod first.", "First Pass");
                 return;
             }
 
             try
             {
-                var modZipPath = SelectedBatchResult.ModZip;
-                var modFolder = Path.GetDirectoryName(modZipPath);
+                var csvPath = Path.Combine(
+                    Path.GetDirectoryName(SelectedBatchResult.ModZip) ?? "",
+                    Path.GetFileNameWithoutExtension(SelectedBatchResult.ModZip) + " - first pass report.csv");
 
-                if (string.IsNullOrWhiteSpace(modFolder) || !Directory.Exists(modFolder))
+                using var writer = new StreamWriter(csvPath, false, new System.Text.UTF8Encoding(true));
+
+                writer.WriteLine("MaterialFile,Mode,Material,Stage,Key,OriginalPath,Status,MatchType,Source,NewPath");
+
+                foreach (var row in SelectedBatchResult.DetailRows)
                 {
-                    MessageBox.Show("Could not determine the mod folder.", "Export Texture Report");
-                    return;
+                    WriteCsvRow(writer, new[]
+                    {
+                row.MaterialFile,
+                row.ParseMode,
+                row.MaterialName,
+                row.StageIndex.ToString(),
+                row.Key,
+                row.OriginalPath,
+                row.Status,
+                row.MatchType,
+                row.Source,
+                row.NewPath
+            });
                 }
 
-                var modNameWithoutExt = Path.GetFileNameWithoutExtension(SelectedBatchResult.ModName);
-                var reportPath = Path.Combine(modFolder, $"{modNameWithoutExt}- texture report.csv");
-
-                var lines = new List<string>
-        {
-            string.Join(",",
-                Csv("Material File"),
-                Csv("Mode"),
-                Csv("Material"),
-                Csv("Stage"),
-                Csv("Key"),
-                Csv("Original Path"),
-                Csv("Status"),
-                Csv("Match Type"),
-                Csv("Source"),
-                Csv("New Path"))
-        };
-
-                foreach (var row in DetailRows)
-                {
-                    lines.Add(string.Join(",",
-                        Csv(row.MaterialFile),
-                        Csv(row.ParseMode),
-                        Csv(row.MaterialName),
-                        Csv(row.StageIndex.ToString()),
-                        Csv(row.Key),
-                        Csv(row.OriginalPath),
-                        Csv(row.Status),
-                        Csv(row.MatchType),
-                        Csv(row.Source),
-                        Csv(row.NewPath)));
-                }
-
-                File.WriteAllLines(reportPath, lines);
-
-                StatusText = $"Texture report exported: {Path.GetFileName(reportPath)}";
-                MessageBox.Show($"Texture report saved to:\n{reportPath}", "Export Complete");
+                MessageBox.Show($"First pass report exported:\n\n{csvPath}", "First Pass");
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Export Texture Report");
+                MessageBox.Show("Failed to export first pass report:\n\n" + ex.Message, "First Pass");
             }
         }
+
+        private void ExportMaterialReport()
+        {
+            if (SelectedBatchResult is null)
+            {
+                MessageBox.Show("Select a mod first.", "Second Pass");
+                return;
+            }
+
+            try
+            {
+                var csvPath = Path.Combine(
+                    Path.GetDirectoryName(SelectedBatchResult.ModZip) ?? "",
+                    Path.GetFileNameWithoutExtension(SelectedBatchResult.ModZip) + " - second pass table.csv");
+
+                using var writer = new StreamWriter(csvPath, false, new System.Text.UTF8Encoding(true));
+
+                WriteCsvRow(writer, new[]
+                {
+                    "Material",
+                    "Ref Count",
+                    "Status",
+                    "Defined In",
+                    "Definition Origin",
+                    "Color",
+                    "Normal",
+                    "Specular",
+                    "Generated",
+                    "Notes"
+                });
+
+                foreach (var row in SecondPassRows)
+                {
+                    WriteCsvRow(writer, new[]
+                    {
+                row.MaterialName,
+                row.ReferenceCount.ToString(),
+                row.Status,
+                row.DefinitionPath,
+                row.DefinitionOrigin,
+                row.ColorMap,
+                row.NormalMap,
+                row.SpecularMap,
+                row.GeneratedDefinition,
+                row.Notes
+            });
+                }
+
+                MessageBox.Show($"Second pass table exported:\n\n{csvPath}", "Second Pass");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to export second pass table:\n\n" + ex.Message, "Second Pass");
+            }
+        }
+
+        private void ExportThirdPassReport()
+        {
+            if (SelectedBatchResult is null)
+            {
+                MessageBox.Show("Select a mod first.", "Third Pass");
+                return;
+            }
+
+            if (SelectedBatchResult.GeneratedMaterialDefinitionResult is null)
+            {
+                MessageBox.Show("No third pass report is available for the selected mod yet.", "Third Pass");
+                return;
+            }
+
+            try
+            {
+                var service = new GeneratedMaterialDefinitionService();
+
+                var csvPath = service.ExportCsv(
+                    SelectedBatchResult.GeneratedMaterialDefinitionResult,
+                    SelectedBatchResult.ModZip);
+
+                var jsonPath = service.ExportGeneratedJsonPreview(
+                    SelectedBatchResult.GeneratedMaterialDefinitionResult,
+                    SelectedBatchResult.ModZip);
+
+                MessageBox.Show(
+                    $"Third pass report exported:\n\nCSV:\n{csvPath}\n\nGenerated JSON preview:\n{jsonPath}",
+                    "Third Pass");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to export third pass report:\n\n" + ex.Message, "Third Pass");
+            }
+        }
+
+        private static void WriteCsvRow(StreamWriter writer, IEnumerable<string?> values)
+        {
+            writer.WriteLine(string.Join(",", values.Select(CsvEscape)));
+        }
+
+        private static string CsvEscape(string? value)
+        {
+            value ??= string.Empty;
+
+            if (value.Contains('"'))
+                value = value.Replace("\"", "\"\"");
+
+            if (value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r'))
+                return $"\"{value}\"";
+
+            return value;
+        }
+        //private void ExportTextureReport()
+        //{
+        //    if (SelectedBatchResult is null)
+        //    {
+        //        MessageBox.Show("No mod selected.", "Export Texture Report");
+        //        return;
+        //    }
+
+        //    try
+        //    {
+        //        var modZipPath = SelectedBatchResult.ModZip;
+        //        var modFolder = Path.GetDirectoryName(modZipPath);
+
+        //        if (string.IsNullOrWhiteSpace(modFolder) || !Directory.Exists(modFolder))
+        //        {
+        //            MessageBox.Show("Could not determine the mod folder.", "Export Texture Report");
+        //            return;
+        //        }
+
+        //        var modNameWithoutExt = Path.GetFileNameWithoutExtension(SelectedBatchResult.ModName);
+        //        var reportPath = Path.Combine(modFolder, $"{modNameWithoutExt}- texture report.csv");
+
+        //        var lines = new List<string>
+        //{
+        //    string.Join(",",
+        //        Csv("Material File"),
+        //        Csv("Mode"),
+        //        Csv("Material"),
+        //        Csv("Stage"),
+        //        Csv("Key"),
+        //        Csv("Original Path"),
+        //        Csv("Status"),
+        //        Csv("Match Type"),
+        //        Csv("Source"),
+        //        Csv("New Path"))
+        //};
+
+        //        foreach (var row in DetailRows)
+        //        {
+        //            lines.Add(string.Join(",",
+        //                Csv(row.MaterialFile),
+        //                Csv(row.ParseMode),
+        //                Csv(row.MaterialName),
+        //                Csv(row.StageIndex.ToString()),
+        //                Csv(row.Key),
+        //                Csv(row.OriginalPath),
+        //                Csv(row.Status),
+        //                Csv(row.MatchType),
+        //                Csv(row.Source),
+        //                Csv(row.NewPath)));
+        //        }
+
+        //        File.WriteAllLines(reportPath, lines);
+
+        //        StatusText = $"Texture report exported: {Path.GetFileName(reportPath)}";
+        //        MessageBox.Show($"Texture report saved to:\n{reportPath}", "Export Complete");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        MessageBox.Show(ex.Message, "Export Texture Report");
+        //    }
+        //}
 
         private static string Csv(string? value)
         {
@@ -374,7 +560,11 @@ namespace BeamNGTextureFixer.ViewModels
 
             BatchResults.Clear();
             DetailRows = new List<DetailRow>();
+            SecondPassRows = new List<SecondPassRow>();
+            ThirdPassRows = new List<ThirdPassRow>();
             SummaryText = "No scan yet.";
+            SecondPassSummaryText = "No second pass data yet.";
+            ThirdPassSummaryText = "No third pass data yet.";
 
             BeginBusy();
             StatusText = "Counting material files...";
@@ -441,9 +631,13 @@ namespace BeamNGTextureFixer.ViewModels
                                     });
                                 });
 
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                StatusText = $"{Path.GetFileName(modZip)} - second pass material scan...";
+                            });
 
-                            var finder = new MaterialFinderService();
-                            var finderResult = finder.Scan(
+                            var materialFinder = new MaterialFinderService();
+                            var materialFinderResult = materialFinder.Scan(
                                 new MaterialFinderRequest
                                 {
                                     ModZipPath = modZip,
@@ -453,22 +647,49 @@ namespace BeamNGTextureFixer.ViewModels
                                 },
                                 token);
 
-                            MaterialFinderCsvExporter.Export(finderResult, modZip);
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                StatusText = $"{Path.GetFileName(modZip)} - third pass generation scan...";
+                            });
 
                             var generatedService = new GeneratedMaterialDefinitionService();
-
-                            var generatedResult = generatedService.BuildSuggestions(
+                            var generatedMaterialResult = generatedService.BuildSuggestions(
                                 new GeneratedMaterialDefinitionRequest
                                 {
                                     ModZipPath = modZip,
                                     CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
                                     OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
                                 },
-                                finderResult,
+                                materialFinderResult,
                                 token);
 
-                            generatedService.ExportCsv(generatedResult, modZip);
-                            generatedService.ExportGeneratedJsonPreview(generatedResult, modZip);
+                            //var finder = new MaterialFinderService();
+                            //var finderResult = finder.Scan(
+                            //    new MaterialFinderRequest
+                            //    {
+                            //        ModZipPath = modZip,
+                            //        CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                            //        OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
+                            //        ScanReferencesInContentFolders = false
+                            //    },
+                            //    token);
+
+                            //MaterialFinderCsvExporter.Export(finderResult, modZip);
+
+                            //var generatedService = new GeneratedMaterialDefinitionService();
+
+                            //var generatedResult = generatedService.BuildSuggestions(
+                            //    new GeneratedMaterialDefinitionRequest
+                            //    {
+                            //        ModZipPath = modZip,
+                            //        CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                            //        OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
+                            //    },
+                            //    finderResult,
+                            //    token);
+
+                            //generatedService.ExportCsv(generatedResult, modZip);
+                            //generatedService.ExportGeneratedJsonPreview(generatedResult, modZip);
 
                             var row = new BatchResultRow
                             {
@@ -483,7 +704,9 @@ namespace BeamNGTextureFixer.ViewModels
                                 BuildStatus = "not built",
                                 FixesMade = 0,
                                 OutZip = "",
-                                Service = service
+                                Service = service,
+                                MaterialFinderResult = materialFinderResult,
+                                GeneratedMaterialDefinitionResult = generatedMaterialResult
                             };
 
                             var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(service.ModZipPath));
@@ -604,14 +827,162 @@ namespace BeamNGTextureFixer.ViewModels
             if (row is null)
             {
                 DetailRows = new List<DetailRow>();
-                ExportTextureReportCommand.RaiseCanExecuteChanged();
+                SecondPassRows = new List<SecondPassRow>();
+                ThirdPassRows = new List<ThirdPassRow>();
+                SecondPassSummaryText = "No second pass data yet.";
+                ThirdPassSummaryText = "No third pass data yet.";
                 UpdateStatusSummary();
                 return;
             }
 
             DetailRows = row.DetailRows.ToList();
-            ExportTextureReportCommand.RaiseCanExecuteChanged();
+
+            BindSecondPass(row.MaterialFinderResult);
+            BindThirdPass(row.GeneratedMaterialDefinitionResult);
+
             UpdateStatusSummary();
+        }
+
+        private void BindSecondPass(MaterialFinderResult? result)
+        {
+            if (result is null)
+            {
+                SecondPassRows = new List<SecondPassRow>();
+                SecondPassSummaryText = "No second pass data yet.";
+                return;
+            }
+
+            var rows = result.Issues
+                .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
+                .Select(issue =>
+                {
+                    var primaryDef = issue.Definitions
+                        .OrderBy(d => d.Origin == "mod" ? 0 : d.Origin == "current_content" ? 1 : 2)
+                        .ThenBy(d => d.SourceArchivePath, StringComparer.OrdinalIgnoreCase)
+                        .ThenBy(d => d.SourcePath, StringComparer.OrdinalIgnoreCase)
+                        .FirstOrDefault();
+
+                    string colorMap = "";
+                    string normalMap = "";
+                    string specularMap = "";
+
+                    if (primaryDef is not null)
+                    {
+                        colorMap = primaryDef.TextureRefs
+                            .FirstOrDefault(t => t.Key.Equals("colorMap", StringComparison.OrdinalIgnoreCase)
+                                              || t.Key.Equals("baseColorMap", StringComparison.OrdinalIgnoreCase))
+                            ?.OriginalValue ?? "";
+
+                        normalMap = primaryDef.TextureRefs
+                            .FirstOrDefault(t => t.Key.Equals("normalMap", StringComparison.OrdinalIgnoreCase))
+                            ?.OriginalValue ?? "";
+
+                        specularMap = primaryDef.TextureRefs
+                            .FirstOrDefault(t => t.Key.Equals("specularMap", StringComparison.OrdinalIgnoreCase))
+                            ?.OriginalValue ?? "";
+                    }
+
+                    return new SecondPassRow
+                    {
+                        MaterialName = issue.MaterialName,
+                        ReferenceCount = issue.ReferenceCount,
+                        Status = issue.IssueType,
+                        DefinitionPath = primaryDef?.SourcePath ?? "",
+                        DefinitionOrigin = primaryDef?.Origin ?? "",
+                        ColorMap = colorMap,
+                        NormalMap = normalMap,
+                        SpecularMap = specularMap,
+                        GeneratedDefinition = issue.IssueType == "referenced_but_undefined" ? "candidate possible" : "",
+                        Notes = BuildSecondPassNotes(issue, primaryDef)
+                    };
+                })
+                .ToList();
+
+            SecondPassRows = rows;
+
+            SecondPassSummaryText =
+                $"Second Pass materials tracked: {rows.Count}\n" +
+                $"Defined OK: {rows.Count(x => x.Status == "defined_ok")}\n" +
+                $"Defined but broken: {rows.Count(x => x.Status == "defined_but_broken")}\n" +
+                $"Referenced but undefined: {rows.Count(x => x.Status == "referenced_but_undefined")}\n" +
+                $"Defined but unreferenced: {rows.Count(x => x.Status == "defined_but_unreferenced" || x.Status == "defined_but_unreferenced_and_broken")}";
+        }
+
+        private static string BuildSecondPassNotes(MaterialIssueRecord issue, MaterialDefinitionRecord? primaryDef)
+        {
+            if (issue.IssueType == "referenced_but_undefined")
+                return "Material is referenced by the mod, but no definition was found in scanned sources.";
+
+            if (primaryDef is null)
+                return "No primary definition selected.";
+
+            if (issue.IssueType == "defined_but_broken")
+            {
+                int missingCount = primaryDef.DependencyChecks.Count(x => x.Status == "missing");
+                return $"Definition found, but {missingCount} texture dependency/dependencies are unresolved.";
+            }
+
+            if (issue.IssueType == "defined_ok")
+                return "Definition found and all known texture dependencies resolved.";
+
+            if (issue.IssueType == "defined_but_unreferenced")
+                return "Definition exists, but no material references were found in scanned text files.";
+
+            if (issue.IssueType == "defined_but_unreferenced_and_broken")
+                return "Definition exists and is unreferenced, and at least one texture dependency is unresolved.";
+
+            return "";
+        }
+
+        private void BindThirdPass(GeneratedMaterialDefinitionResult? result)
+        {
+            if (result is null)
+            {
+                ThirdPassRows = new List<ThirdPassRow>();
+                ThirdPassSummaryText = "No third pass data yet.";
+                return;
+            }
+
+            var rows = result.Candidates
+                .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
+                .Select(candidate => new ThirdPassRow
+                {
+                    MaterialName = candidate.MaterialName,
+                    PreStatus = "referenced_but_undefined",
+                    ActionTaken = candidate.GenerationStatus,
+                    ImportedFrom = BuildThirdPassImportedFrom(candidate),
+                    InjectedInto = candidate.GenerationStatus == "no_generated_candidate"
+                        ? ""
+                        : "tfgenerated.materials.json",
+                    TexturesCopied = candidate.Slots.Values.Count(v => v is not null),
+                    FinalStatus = candidate.GenerationStatus,
+                    Notes = candidate.GenerationExplanation
+                })
+                .ToList();
+
+            ThirdPassRows = rows;
+
+            ThirdPassSummaryText =
+                $"Third Pass generated-material candidates: {rows.Count}\n" +
+                $"Buildable generated candidates: {rows.Count(x => x.FinalStatus == "buildable_generated_candidate")}\n" +
+                $"Partial generated candidates: {rows.Count(x => x.FinalStatus == "partial_generated_candidate")}\n" +
+                $"No suggestion: {rows.Count(x => x.FinalStatus == "no_generated_candidate")}";
+        }
+
+        private static string BuildThirdPassImportedFrom(GeneratedMaterialCandidate candidate)
+        {
+            var sources = new List<string>();
+
+            if (candidate.ChosenColor is not null)
+                sources.Add($"{candidate.ChosenColor.Origin} :: {candidate.ChosenColor.InternalPath}");
+
+            if (candidate.ChosenNormal is not null)
+                sources.Add($"{candidate.ChosenNormal.Origin} :: {candidate.ChosenNormal.InternalPath}");
+
+            if (candidate.ChosenSpecular is not null)
+                sources.Add($"{candidate.ChosenSpecular.Origin} :: {candidate.ChosenSpecular.InternalPath}");
+
+            return string.Join(" | ", sources.Distinct(StringComparer.OrdinalIgnoreCase));
         }
         private async void BuildModsPlaceholder()
         {
@@ -838,7 +1209,7 @@ namespace BeamNGTextureFixer.ViewModels
                     StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {builtMods} out of {totalMods} mods ({abortedMods} aborted)";
                 }
             }
-            else
+            else if (SelectedMainTabIndex == 1)
             {
                 if (SelectedBatchResult is null)
                 {
@@ -847,20 +1218,39 @@ namespace BeamNGTextureFixer.ViewModels
                 }
 
                 int fixableRefs = SelectedBatchResult.ResolvedFromOld;
-                int texturesCopied = SelectedBatchResult.FixesMade;
-                int textureCount = SelectedBatchResult.TextureRefs;
+                int texturesOverall = SelectedBatchResult.TextureRefs;
                 string modName = SelectedBatchResult.ModName;
 
                 bool thisModBuilt = string.Equals(SelectedBatchResult.BuildStatus, "built", StringComparison.OrdinalIgnoreCase);
 
                 if (thisModBuilt)
                 {
-                    StatusText = $"{texturesCopied} textures copied satisfying {fixableRefs} fixable references, {textureCount} textures overall for {modName}";
+                    StatusText = $"{SelectedBatchResult.FixesMade} textures copied satisfying {fixableRefs} fixable references, {texturesOverall} textures overall for {modName}";
                 }
                 else
                 {
-                    StatusText = $"{fixableRefs} fixable references found, {textureCount} textures overall for {modName}";
+                    StatusText = $"{fixableRefs} fixable references found, {texturesOverall} textures overall for {modName}";
                 }
+            }
+            else if (SelectedMainTabIndex == 2)
+            {
+                if (SelectedBatchResult is null)
+                {
+                    StatusText = "No mod selected.";
+                    return;
+                }
+
+                StatusText = $"{SecondPassRows.Count} second-pass material rows for {SelectedBatchResult.ModName}";
+            }
+            else if (SelectedMainTabIndex == 3)
+            {
+                if (SelectedBatchResult is null)
+                {
+                    StatusText = "No mod selected.";
+                    return;
+                }
+
+                StatusText = $"{ThirdPassRows.Count} third-pass material rows for {SelectedBatchResult.ModName}";
             }
         }
     }

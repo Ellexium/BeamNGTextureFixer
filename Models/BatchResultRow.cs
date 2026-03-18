@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 
-
 namespace BeamNGTextureFixer.Models
 {
     public class BatchResultRow
@@ -19,8 +18,14 @@ namespace BeamNGTextureFixer.Models
         public int FixesMade { get; set; }
         public string FixSummary => $"{ResolvedFromOld} / {FixesMade}";
         public string OutZip { get; set; } = "";
+
         public List<DetailRow> DetailRows { get; set; } = new();
+
         public BeamNGFixerService? Service { get; set; }
+
+        public MaterialFinderResult? MaterialFinderResult { get; set; }
+        public GeneratedMaterialDefinitionResult? GeneratedMaterialDefinitionResult { get; set; }
+
         public bool IsAborted => string.Equals(BuildStatus, "aborted", StringComparison.OrdinalIgnoreCase);
     }
 }
