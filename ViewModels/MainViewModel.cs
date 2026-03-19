@@ -108,6 +108,7 @@ namespace BeamNGTextureFixer.ViewModels
                 if (SetProperty(ref _oldContentFolder, value))
                 {
                     BeamNGFixerService.ClearIndexCache();
+                    RefreshActionButtons();
                 }
             }
         }
@@ -121,6 +122,7 @@ namespace BeamNGTextureFixer.ViewModels
                 if (SetProperty(ref _currentContentFolder, value))
                 {
                     BeamNGFixerService.ClearIndexCache();
+                    RefreshActionButtons();
                 }
             }
         }
@@ -129,7 +131,11 @@ namespace BeamNGTextureFixer.ViewModels
         public string SelectedModsDisplay
         {
             get => _selectedModsDisplay;
-            set => SetProperty(ref _selectedModsDisplay, value);
+            set
+            {
+                if (SetProperty(ref _selectedModsDisplay, value))
+                    RefreshActionButtons();
+            }
         }
 
         private string _statusText = "Ready.";
@@ -205,6 +211,8 @@ namespace BeamNGTextureFixer.ViewModels
         public RelayCommand BrowseModsCommand { get; }
         public RelayCommand ScanCommand { get; }
         public RelayCommand BuildCommand { get; }
+        public RelayCommand AggressivePassCommand { get; }
+
 
         public RelayCommand ExportTextureReportCommand { get; }
         public RelayCommand ExportMaterialReportCommand { get; }
@@ -224,9 +232,9 @@ namespace BeamNGTextureFixer.ViewModels
         {
             SelectedMods.Clear();
             SelectedModsDisplay = string.Empty;
+            RefreshActionButtons();
         }
 
-        public RelayCommand AggressivePassCommand { get; }
         public MainViewModel()
         {
             BrowseOldCommand = new RelayCommand(BrowseOldFolder);
@@ -237,7 +245,7 @@ namespace BeamNGTextureFixer.ViewModels
             ClearCurrentCommand = new RelayCommand(ClearCurrentFolder);
             ClearModsCommand = new RelayCommand(ClearMods);
 
-            ScanCommand = new RelayCommand(ScanMods);
+            ScanCommand = new RelayCommand(ScanMods, CanScan);
             BuildCommand = new RelayCommand(BuildModsPlaceholder, CanBuildFirstPass);
             AggressivePassCommand = new RelayCommand(RunAggressivePassPlaceholder, CanRunAggressivePass);
 
@@ -250,6 +258,17 @@ namespace BeamNGTextureFixer.ViewModels
             // ExportTextureReportCommand = new RelayCommand(ExportTextureReport, () => SelectedBatchResult is not null && DetailRows.Count > 0);
         }
 
+
+        private bool CanScan()
+        {
+            if (IsBusy)
+                return false;
+
+            return !string.IsNullOrWhiteSpace(OldContentFolder)
+                && !string.IsNullOrWhiteSpace(CurrentContentFolder)
+                && SelectedMods.Count > 0;
+        }
+
         private bool CanBuildFirstPass()
         {
             if (IsBusy)
@@ -260,11 +279,6 @@ namespace BeamNGTextureFixer.ViewModels
                 x.ResolvedFromOld > 0);
         }
 
-        private void RefreshActionButtons()
-        {
-            BuildCommand.RaiseCanExecuteChanged();
-            AggressivePassCommand.RaiseCanExecuteChanged();
-        }
         private bool CanRunAggressivePass()
         {
             if (IsBusy)
@@ -274,6 +288,15 @@ namespace BeamNGTextureFixer.ViewModels
                 string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) &&
                 !x.AggressivePassRan);
         }
+
+        private void RefreshActionButtons()
+        {
+            ScanCommand.RaiseCanExecuteChanged();
+            BuildCommand.RaiseCanExecuteChanged();
+            AggressivePassCommand.RaiseCanExecuteChanged();
+        }
+
+
         private void ExportTextureReport()
         {
             if (SelectedBatchResult is null)
@@ -521,6 +544,8 @@ namespace BeamNGTextureFixer.ViewModels
             IsProgressIndeterminate = true;
             ProgressValue = 0;
             ProgressMaximum = 1;
+
+            RefreshActionButtons();
         }
 
         private void EndBusy()
@@ -533,6 +558,8 @@ namespace BeamNGTextureFixer.ViewModels
 
             _cts?.Dispose();
             _cts = null;
+
+            RefreshActionButtons();
 
             if (_closeAfterAbort)
             {
@@ -585,6 +612,8 @@ namespace BeamNGTextureFixer.ViewModels
                 SelectedModsDisplay = SelectedMods.Count == 1
                     ? SelectedMods[0]
                     : $"{SelectedMods.Count} mod(s) selected";
+
+                RefreshActionButtons();
             }
         }
 
@@ -678,65 +707,7 @@ namespace BeamNGTextureFixer.ViewModels
                                     });
                                 });
 
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                StatusText = $"{Path.GetFileName(modZip)} - second pass material scan...";
-                            });
-
-                            var materialFinder = new MaterialFinderService();
-                            var materialFinderResult = materialFinder.Scan(
-                                new MaterialFinderRequest
-                                {
-                                    ModZipPath = modZip,
-                                    CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
-                                    OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
-                                    ScanReferencesInContentFolders = false
-                                },
-                                token);
-
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                StatusText = $"{Path.GetFileName(modZip)} - third pass generation scan...";
-                            });
-
-                            var generatedService = new GeneratedMaterialDefinitionService();
-                            var generatedMaterialResult = generatedService.BuildSuggestions(
-                                new GeneratedMaterialDefinitionRequest
-                                {
-                                    ModZipPath = modZip,
-                                    CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
-                                    OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
-                                },
-                                materialFinderResult,
-                                token);
-
-                            //var finder = new MaterialFinderService();
-                            //var finderResult = finder.Scan(
-                            //    new MaterialFinderRequest
-                            //    {
-                            //        ModZipPath = modZip,
-                            //        CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
-                            //        OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
-                            //        ScanReferencesInContentFolders = false
-                            //    },
-                            //    token);
-
-                            //MaterialFinderCsvExporter.Export(finderResult, modZip);
-
-                            //var generatedService = new GeneratedMaterialDefinitionService();
-
-                            //var generatedResult = generatedService.BuildSuggestions(
-                            //    new GeneratedMaterialDefinitionRequest
-                            //    {
-                            //        ModZipPath = modZip,
-                            //        CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
-                            //        OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
-                            //    },
-                            //    finderResult,
-                            //    token);
-
-                            //generatedService.ExportCsv(generatedResult, modZip);
-                            //generatedService.ExportGeneratedJsonPreview(generatedResult, modZip);
+                            
 
                             var row = new BatchResultRow
                             {
@@ -754,8 +725,6 @@ namespace BeamNGTextureFixer.ViewModels
                                 AggressivePassRan = false,
                                 AggressivePassStatus = "not run",
                                 Service = service,
-                                MaterialFinderResult = materialFinderResult,
-                                GeneratedMaterialDefinitionResult = generatedMaterialResult
                             };
 
                             var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(service.ModZipPath));
@@ -869,44 +838,38 @@ namespace BeamNGTextureFixer.ViewModels
                     RefreshActionButtons();
             }
         }
-        public List<BatchResultRow> FixableMods =>
-            BatchResults.Where(x => x.ResolvedFromOld > 0).ToList();
 
-        private void LoadDetailRows(BatchResultRow? row)
+        private readonly Dictionary<string, MaterialFinderResult> _materialFinderResultsByTargetZip = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, GeneratedMaterialDefinitionResult> _generatedResultsByTargetZip = new(StringComparer.OrdinalIgnoreCase);
+        private void BindSecondPass(BatchResultRow? batchRow)
         {
-            if (row is null)
-            {
-                DetailRows = new List<DetailRow>();
-                SecondPassRows = new List<SecondPassRow>();
-                ThirdPassRows = new List<ThirdPassRow>();
-                SecondPassSummaryText = "No second pass data yet.";
-                ThirdPassSummaryText = "No third pass data yet.";
-                UpdateStatusSummary();
-                return;
-            }
-
-            DetailRows = row.DetailRows.ToList();
-
-            BindSecondPass(row.MaterialFinderResult);
-            BindThirdPass(row);
-
-            UpdateStatusSummary();
-        }
-
-        private void BindSecondPass(MaterialFinderResult? result)
-        {
-            if (result is null)
+            if (batchRow is null)
             {
                 SecondPassRows = new List<SecondPassRow>();
                 SecondPassSummaryText = "No second pass data yet.";
                 return;
             }
 
-            var rows = result.Issues
-                .Where(x =>
-                    !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
+            var targetZip = GetTargetZipForRow(batchRow);
+
+            if (string.IsNullOrWhiteSpace(targetZip) ||
+                !_materialFinderResultsByTargetZip.TryGetValue(targetZip, out var materialFinderResult))
+            {
+                SecondPassRows = new List<SecondPassRow>();
+                SecondPassSummaryText = "No second pass data yet.";
+                return;
+            }
+
+            static bool IsUnreferencedIssue(string? issueType) =>
+                string.Equals(issueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(issueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
+
+            var visibleIssues = materialFinderResult.Issues
+                .Where(issue => !IsUnreferencedIssue(issue.IssueType))
+                .OrderBy(issue => issue.MaterialName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var rows = visibleIssues
                 .Select(issue =>
                 {
                     var primaryDef = issue.Definitions
@@ -957,64 +920,54 @@ namespace BeamNGTextureFixer.ViewModels
                 $"Second Pass materials tracked: {rows.Count}\n" +
                 $"Defined OK: {rows.Count(x => x.Status == "defined_ok")}\n" +
                 $"Defined but broken: {rows.Count(x => x.Status == "defined_but_broken")}\n" +
-                $"Referenced but undefined: {rows.Count(x => x.Status == "referenced_but_undefined")}\n" +
-                $"Defined but unreferenced: {rows.Count(x => x.Status == "defined_but_unreferenced" || x.Status == "defined_but_unreferenced_and_broken")}";
+                $"Referenced but undefined: {rows.Count(x => x.Status == "referenced_but_undefined")}";
         }
 
-        private static string BuildSecondPassNotes(MaterialIssueRecord issue, MaterialDefinitionRecord? primaryDef)
+        private string GetTargetZipForRow(BatchResultRow row)
         {
-            if (issue.IssueType == "referenced_but_undefined")
-                return "Material is referenced by the mod, but no definition was found in scanned sources.";
-
-            if (primaryDef is null)
-                return "No primary definition selected.";
-
-            if (issue.IssueType == "defined_but_broken")
-            {
-                int missingCount = primaryDef.DependencyChecks.Count(x => x.Status == "missing");
-                return $"Definition found, but {missingCount} texture dependency/dependencies are unresolved.";
-            }
-
-            if (issue.IssueType == "defined_ok")
-                return "Definition found and all known texture dependencies resolved.";
-
-            if (issue.IssueType == "defined_but_unreferenced")
-                return "Definition exists, but no material references were found in scanned text files.";
-
-            if (issue.IssueType == "defined_but_unreferenced_and_broken")
-                return "Definition exists and is unreferenced, and at least one texture dependency is unresolved.";
-
-            return "";
+            return ReplaceOriginalMod ? row.ModZip : row.OutZip;
         }
 
         private void BindThirdPass(BatchResultRow? batchRow)
         {
-            if (batchRow?.MaterialFinderResult is null)
+            if (batchRow is null)
             {
                 ThirdPassRows = new List<ThirdPassRow>();
                 ThirdPassSummaryText = "No third pass data yet.";
                 return;
             }
 
-            var issueRows = batchRow.MaterialFinderResult.Issues
-                    .Where(x =>
-                        !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
-                        !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
-                    .Select(issue =>
-                    {
+            var targetZip = GetTargetZipForRow(batchRow);
+
+            if (string.IsNullOrWhiteSpace(targetZip) ||
+                !_materialFinderResultsByTargetZip.TryGetValue(targetZip, out var materialFinderResult))
+            {
+                ThirdPassRows = new List<ThirdPassRow>();
+                ThirdPassSummaryText = "No third pass data yet.";
+                return;
+            }
+
+            static bool IsUnreferencedIssue(string? issueType) =>
+                string.Equals(issueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(issueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
+
+            var visibleIssues = materialFinderResult.Issues
+                .Where(issue => !IsUnreferencedIssue(issue.IssueType))
+                .OrderBy(issue => issue.MaterialName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var issueRows = visibleIssues
+                .Select(issue =>
+                {
                     var primaryDef = PickPrimaryDefinition(issue.Definitions);
+                    bool isReferenced = !IsUnreferencedIssue(issue.IssueType);
 
-                        bool isReferenced =
-                            !string.Equals(issue.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
-                            !string.Equals(issue.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
+                    bool shouldLocalize =
+                        isReferenced &&
+                        primaryDef is not null &&
+                        !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase);
 
-                        bool shouldLocalize =
-                            isReferenced &&
-                            primaryDef is not null &&
-                            !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase);
-
-                        string importedFrom = primaryDef is null
+                    string importedFrom = primaryDef is null
                         ? ""
                         : $"{primaryDef.Origin} :: {primaryDef.SourceArchivePath} :: {primaryDef.SourcePath}";
 
@@ -1046,8 +999,6 @@ namespace BeamNGTextureFixer.ViewModels
                         notes = "Definition is already inside the mod, so aggressive localization is not needed.";
                     }
 
-                    int textureCount = primaryDef?.TextureRefs.Count ?? 0;
-
                     return new ThirdPassRow
                     {
                         MaterialName = issue.MaterialName,
@@ -1056,7 +1007,7 @@ namespace BeamNGTextureFixer.ViewModels
                         ActionTaken = actionTaken,
                         ImportedFrom = importedFrom,
                         InjectedInto = injectedInto,
-                        TexturesCopied = textureCount,
+                        TexturesCopied = primaryDef?.TextureRefs.Count ?? 0,
                         FinalStatus = finalStatus,
                         Notes = notes
                     };
@@ -1069,6 +1020,12 @@ namespace BeamNGTextureFixer.ViewModels
                 $"Third Pass materials tracked: {issueRows.Count}\n" +
                 $"Should localize: {issueRows.Count(x => x.ShouldLocalize == "Yes")}\n" +
                 $"Already local to mod: {issueRows.Count(x => x.ShouldLocalize == "No")}";
+        }
+
+        private static bool IsUnreferencedIssue(string? issueType)
+        {
+            return string.Equals(issueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(issueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
         }
 
         private static MaterialDefinitionRecord? PickPrimaryDefinition(IEnumerable<MaterialDefinitionRecord> definitions)
@@ -1090,21 +1047,60 @@ namespace BeamNGTextureFixer.ViewModels
                 _ => 9
             };
         }
-        private static string BuildThirdPassImportedFrom(GeneratedMaterialCandidate candidate)
+        public List<BatchResultRow> FixableMods =>
+            BatchResults.Where(x => x.ResolvedFromOld > 0).ToList();
+
+        private void LoadDetailRows(BatchResultRow? row)
         {
-            var sources = new List<string>();
+            if (row is null)
+            {
+                DetailRows = new List<DetailRow>();
+                SecondPassRows = new List<SecondPassRow>();
+                ThirdPassRows = new List<ThirdPassRow>();
+                SecondPassSummaryText = "No second pass data yet.";
+                ThirdPassSummaryText = "No third pass data yet.";
+                UpdateStatusSummary();
+                return;
+            }
 
-            if (candidate.ChosenColor is not null)
-                sources.Add($"{candidate.ChosenColor.Origin} :: {candidate.ChosenColor.InternalPath}");
+            DetailRows = row.DetailRows.ToList();
 
-            if (candidate.ChosenNormal is not null)
-                sources.Add($"{candidate.ChosenNormal.Origin} :: {candidate.ChosenNormal.InternalPath}");
+            BindSecondPass(row);
+            BindThirdPass(row);
 
-            if (candidate.ChosenSpecular is not null)
-                sources.Add($"{candidate.ChosenSpecular.Origin} :: {candidate.ChosenSpecular.InternalPath}");
-
-            return string.Join(" | ", sources.Distinct(StringComparer.OrdinalIgnoreCase));
+            UpdateStatusSummary();
         }
+
+
+
+        private static string BuildSecondPassNotes(MaterialIssueRecord issue, MaterialDefinitionRecord? primaryDef)
+        {
+            if (issue.IssueType == "referenced_but_undefined")
+                return "Material is referenced by the mod, but no definition was found in scanned sources.";
+
+            if (primaryDef is null)
+                return "No primary definition selected.";
+
+            if (issue.IssueType == "defined_but_broken")
+            {
+                int missingCount = primaryDef.DependencyChecks.Count(x => x.Status == "missing");
+                return $"Definition found, but {missingCount} texture dependency/dependencies are unresolved.";
+            }
+
+            if (issue.IssueType == "defined_ok")
+                return "Definition found and all known texture dependencies resolved.";
+
+            if (issue.IssueType == "defined_but_unreferenced")
+                return "Definition exists, but no material references were found in scanned text files.";
+
+            if (issue.IssueType == "defined_but_unreferenced_and_broken")
+                return "Definition exists and is unreferenced, and at least one texture dependency is unresolved.";
+
+            return "";
+        }
+
+       
+
         private async void BuildModsPlaceholder()
         {
             if (BatchResults.Count == 0)
@@ -1266,7 +1262,7 @@ namespace BeamNGTextureFixer.ViewModels
         {
             if (BatchResults.Count == 0)
             {
-                MessageBox.Show("Scan and build one or more mods first.", "No Built Mods");
+                MessageBox.Show("Build one or more mods first.", "Aggressive Pass");
                 return;
             }
 
@@ -1297,9 +1293,7 @@ namespace BeamNGTextureFixer.ViewModels
                     {
                         token.ThrowIfCancellationRequested();
 
-                        var targetZip = ReplaceOriginalMod
-                            ? row.ModZip
-                            : row.OutZip;
+                        var targetZip = ReplaceOriginalMod ? row.ModZip : row.OutZip;
 
                         if (string.IsNullOrWhiteSpace(targetZip) || !File.Exists(targetZip))
                         {
@@ -1308,16 +1302,48 @@ namespace BeamNGTextureFixer.ViewModels
                             continue;
                         }
 
-                        // placeholder for:
-                        // 1. MaterialFinder on targetZip
-                        // 2. GeneratedMaterialDefinitionService on targetZip
-                        // 3. copy localized textures into missingfilefix_<mod>_tfgeneratedlocalization/
-                        // 4. inject tfgenerated.materials.json into targetZip
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            StatusText = $"{Path.GetFileName(targetZip)} - second pass material scan...";
+                        });
+
+                        var materialFinder = new MaterialFinderService();
+                        var materialFinderResult = materialFinder.Scan(
+                            new MaterialFinderRequest
+                            {
+                                ModZipPath = targetZip,
+                                CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                                OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
+                                ScanReferencesInContentFolders = false
+                            },
+                            token);
+
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            StatusText = $"{Path.GetFileName(targetZip)} - third pass generation scan...";
+                        });
+
+                        var generatedService = new GeneratedMaterialDefinitionService();
+                        var generatedMaterialResult = generatedService.BuildSuggestions(
+                            new GeneratedMaterialDefinitionRequest
+                            {
+                                ModZipPath = targetZip,
+                                CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                                OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
+                            },
+                            materialFinderResult,
+                            token);
+
+                        _materialFinderResultsByTargetZip[targetZip] = materialFinderResult;
+                        _generatedResultsByTargetZip[targetZip] = generatedMaterialResult;
 
                         row.AggressivePassRan = true;
                         row.AggressivePassStatus = "done";
                     }
                 }, token);
+
+                if (SelectedBatchResult is not null)
+                    LoadDetailRows(SelectedBatchResult);
 
                 StatusText = "Aggressive pass complete.";
             }

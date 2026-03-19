@@ -26,8 +26,6 @@ namespace BeamNGTextureFixer.Models
         public List<DetailRow> DetailRows { get; set; } = new();
 
         public BeamNGFixerService? Service { get; set; }
-        public MaterialFinderResult? MaterialFinderResult { get; set; }
-        public GeneratedMaterialDefinitionResult? GeneratedMaterialDefinitionResult { get; set; }
 
         public bool IsAborted => string.Equals(BuildStatus, "aborted", StringComparison.OrdinalIgnoreCase);
     }
