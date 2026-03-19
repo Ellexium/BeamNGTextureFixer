@@ -565,6 +565,21 @@ namespace BeamNGTextureFixer.Services
                             var value = prop.Value.GetString() ?? string.Empty;
                             if (ShouldKeepTextureValue(value))
                             {
+                                var normalizedValue = PathHelpers.NormalizePath(value);
+
+                                bool hasPath =
+                                    normalizedValue.Contains('/') ||
+                                    normalizedValue.Contains('\\');
+
+                                if (!hasPath)
+                                {
+                                    var materialFolder = Path.GetDirectoryName(PathHelpers.NormalizePath(materialFile)) ?? string.Empty;
+                                    materialFolder = PathHelpers.NormalizePath(materialFolder);
+
+                                    if (!string.IsNullOrWhiteSpace(materialFolder))
+                                        normalizedValue = PathHelpers.NormalizePath($"{materialFolder}/{normalizedValue}");
+                                }
+
                                 yield return new TextureRef
                                 {
                                     MaterialFile = materialFile,
@@ -572,7 +587,7 @@ namespace BeamNGTextureFixer.Services
                                     StageIndex = stageIndex,
                                     Key = prop.Name,
                                     OriginalValue = value,
-                                    NormalizedValue = PathHelpers.NormalizePath(value),
+                                    NormalizedValue = normalizedValue,
                                     ExtractionMode = "json"
                                 };
                             }
@@ -594,6 +609,21 @@ namespace BeamNGTextureFixer.Services
                 if (!ShouldKeepTextureValue(value))
                     continue;
 
+                var normalizedValue = PathHelpers.NormalizePath(value);
+
+                bool hasPath =
+                    normalizedValue.Contains('/') ||
+                    normalizedValue.Contains('\\');
+
+                if (!hasPath)
+                {
+                    var materialFolder = Path.GetDirectoryName(PathHelpers.NormalizePath(materialFile)) ?? string.Empty;
+                    materialFolder = PathHelpers.NormalizePath(materialFolder);
+
+                    if (!string.IsNullOrWhiteSpace(materialFolder))
+                        normalizedValue = PathHelpers.NormalizePath($"{materialFolder}/{normalizedValue}");
+                }
+
                 yield return new TextureRef
                 {
                     MaterialFile = materialFile,
@@ -601,7 +631,7 @@ namespace BeamNGTextureFixer.Services
                     StageIndex = 0,
                     Key = prop.Name,
                     OriginalValue = value,
-                    NormalizedValue = PathHelpers.NormalizePath(value),
+                    NormalizedValue = normalizedValue,
                     ExtractionMode = "json"
                 };
             }
@@ -748,30 +778,104 @@ namespace BeamNGTextureFixer.Services
             string internalPath,
             string rawText)
         {
-            var pattern = new Regex(
-                "\"(?<key>[^\"]*material)\"\\s*:\\s*\"(?<value>[^\"]+)\"",
-                RegexOptions.IgnoreCase);
+            JsonDocument doc;
 
-            foreach (Match match in pattern.Matches(rawText))
+            try
             {
-                var key = match.Groups["key"].Value.Trim();
-                var materialName = match.Groups["value"].Value.Trim();
+                doc = JsonDocument.Parse(rawText);
+            }
+            catch (JsonException)
+            {
+                yield break;
+            }
 
-                if (!key.EndsWith("material", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (!LooksLikeMaterialName(materialName))
-                    continue;
-
-                yield return new MaterialReferenceRecord
+            using (doc)
+            {
+                foreach (var reference in ExtractJsonLikeReferencesFromElement(
+                             spec,
+                             internalPath,
+                             doc.RootElement))
                 {
-                    MaterialName = materialName,
-                    ReferencedByFile = internalPath,
-                    ReferencedByArchivePath = spec.ArchivePath,
-                    PropertyName = key,
-                    Origin = spec.Origin,
-                    Evidence = match.Value
-                };
+                    yield return reference;
+                }
+            }
+        }
+
+        private IEnumerable<MaterialReferenceRecord> ExtractJsonLikeReferencesFromElement(
+            MaterialScanSource spec,
+            string internalPath,
+            JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in element.EnumerateObject())
+                {
+                    var key = prop.Name.Trim();
+
+                    bool isMaterialKey =
+                        key.Equals("material", StringComparison.OrdinalIgnoreCase) ||
+                        key.Equals("materials", StringComparison.OrdinalIgnoreCase) ||
+                        key.EndsWith("material", StringComparison.OrdinalIgnoreCase) ||
+                        key.EndsWith("materials", StringComparison.OrdinalIgnoreCase);
+
+                    if (isMaterialKey)
+                    {
+                        if (prop.Value.ValueKind == JsonValueKind.String)
+                        {
+                            var materialName = prop.Value.GetString()?.Trim() ?? string.Empty;
+
+                            if (LooksLikeMaterialName(materialName))
+                            {
+                                yield return new MaterialReferenceRecord
+                                {
+                                    MaterialName = materialName,
+                                    ReferencedByFile = internalPath,
+                                    ReferencedByArchivePath = spec.ArchivePath,
+                                    PropertyName = key,
+                                    Origin = spec.Origin,
+                                    Evidence = materialName
+                                };
+                            }
+                        }
+                        else if (prop.Value.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var item in prop.Value.EnumerateArray())
+                            {
+                                if (item.ValueKind != JsonValueKind.String)
+                                    continue;
+
+                                var materialName = item.GetString()?.Trim() ?? string.Empty;
+
+                                if (!LooksLikeMaterialName(materialName))
+                                    continue;
+
+                                yield return new MaterialReferenceRecord
+                                {
+                                    MaterialName = materialName,
+                                    ReferencedByFile = internalPath,
+                                    ReferencedByArchivePath = spec.ArchivePath,
+                                    PropertyName = key,
+                                    Origin = spec.Origin,
+                                    Evidence = materialName
+                                };
+                            }
+                        }
+                    }
+
+                    foreach (var nested in ExtractJsonLikeReferencesFromElement(spec, internalPath, prop.Value))
+                        yield return nested;
+                }
+
+                yield break;
+            }
+
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray())
+                {
+                    foreach (var nested in ExtractJsonLikeReferencesFromElement(spec, internalPath, item))
+                        yield return nested;
+                }
             }
         }
 

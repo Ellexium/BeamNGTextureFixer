@@ -80,11 +80,53 @@ namespace BeamNGTextureFixer.ViewModels
                 if (SetProperty(ref _useNormalizedCurrentContentFixes, value))
                 {
                     RefreshActionButtons();
+                    UpdateStatusSummary();
+
 
                     if (BatchResults.Count > 0)
                     {
                         ScanMods();
                     }
+                }
+            }
+        }
+
+        private bool _useSameBasenameCurrentContentFixes;
+
+        public bool UseSameBasenameCurrentContentFixes
+        {
+            get => _useSameBasenameCurrentContentFixes;
+            set
+            {
+                if (SetProperty(ref _useSameBasenameCurrentContentFixes, value))
+                {
+                    RefreshActionButtons();
+                    UpdateStatusSummary();
+
+
+                    if (BatchResults.Count > 0)
+                    {
+                        ScanMods();
+                    }
+                }
+            }
+        }
+
+        private bool _preferOldContentRecovery;
+
+        public bool PreferOldContentRecovery
+        {
+            get => _preferOldContentRecovery;
+            set
+            {
+                if (SetProperty(ref _preferOldContentRecovery, value))
+                {
+                    RefreshActionButtons();
+                    UpdateStatusSummary();
+
+
+                    if (BatchResults.Count > 0)
+                        ScanMods();
                 }
             }
         }
@@ -732,6 +774,7 @@ namespace BeamNGTextureFixer.ViewModels
                                 modZip,
                                 OldContentFolder,
                                 string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder,
+                                PreferOldContentRecovery,
                                 token,
                                 (doneInThisMod, totalInThisMod, message) =>
                                 {
@@ -746,7 +789,7 @@ namespace BeamNGTextureFixer.ViewModels
                                     });
                                 });
 
-                            
+
 
                             var row = new BatchResultRow
                             {
@@ -767,7 +810,9 @@ namespace BeamNGTextureFixer.ViewModels
                             };
 
                             var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(service.ModZipPath));
-                            var collisionCounts = service.BasenameCollisionsWithinSourceZip(UseNormalizedCurrentContentFixes);
+                            var collisionCounts = service.BasenameCollisionsWithinSourceZip(
+                                UseNormalizedCurrentContentFixes,
+                                UseSameBasenameCurrentContentFixes);
 
                             foreach (var pair in payload.Results)
                             {
@@ -783,6 +828,7 @@ namespace BeamNGTextureFixer.ViewModels
                                         pair.Hit,
                                         modStem,
                                         UseNormalizedCurrentContentFixes,
+                                        UseSameBasenameCurrentContentFixes,
                                         collisionCounts);
                                 }
 
@@ -1178,13 +1224,16 @@ namespace BeamNGTextureFixer.ViewModels
             if (string.Equals(hit.Status, "resolved_from_old", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            if (!UseNormalizedCurrentContentFixes)
-                return false;
-
             if (!string.Equals(hit.Status, "current_content", StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            return string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase))
+                return UseNormalizedCurrentContentFixes;
+
+            if (string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase))
+                return UseSameBasenameCurrentContentFixes;
+
+            return false;
         }
         private static string BuildSecondPassNotes(MaterialIssueRecord issue, MaterialDefinitionRecord? primaryDef)
         {
@@ -1288,6 +1337,7 @@ namespace BeamNGTextureFixer.ViewModels
                             var result = row.Service.BuildFixedMod(
                                 outPath,
                                 UseNormalizedCurrentContentFixes,
+                                UseSameBasenameCurrentContentFixes,
                                 (done, total, message) =>
                                 {
                                     System.Windows.Application.Current.Dispatcher.Invoke(() =>
@@ -1753,6 +1803,24 @@ namespace BeamNGTextureFixer.ViewModels
             return candidate;
         }
 
+        private static int CountFixableReferences(BatchResultRow? row)
+        {
+            if (row is null)
+                return 0;
+
+            return row.DetailRows.Count(x => !string.IsNullOrWhiteSpace(x.NewPath));
+        }
+
+        private int CountFixableReferencesAllMods()
+        {
+            return BatchResults.Sum(row => row.DetailRows.Count(x => !string.IsNullOrWhiteSpace(x.NewPath)));
+        }
+
+        private int CountModsWithFixableReferences()
+        {
+            return BatchResults.Count(row => row.DetailRows.Any(x => !string.IsNullOrWhiteSpace(x.NewPath)));
+        }
+
         private bool _isBusy;
         public bool IsBusy
         {
@@ -1796,9 +1864,9 @@ namespace BeamNGTextureFixer.ViewModels
                     return;
                 }
 
-                int totalFixableRefs = BatchResults.Sum(x => x.ResolvedFromOld);
-                int modsWithFixableRefs = BatchResults.Count(x => x.ResolvedFromOld > 0);
-                int modsWithNoRefsToFix = BatchResults.Count(x => x.ResolvedFromOld == 0);
+                int totalFixableRefs = CountFixableReferencesAllMods();
+                int modsWithFixableRefs = CountModsWithFixableReferences();
+                int modsWithNoRefsToFix = totalMods - modsWithFixableRefs;
 
                 int builtMods = BatchResults.Count(x =>
                     string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase));
@@ -1807,7 +1875,6 @@ namespace BeamNGTextureFixer.ViewModels
                     .Where(x => string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase))
                     .Sum(x => x.FixesMade);
 
-                // Before any build has actually happened, keep the "no references found to fix" wording
                 bool anyBuildHasHappened = BatchResults.Any(x =>
                     string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(x.BuildStatus, "skipped", StringComparison.OrdinalIgnoreCase));
@@ -1818,8 +1885,8 @@ namespace BeamNGTextureFixer.ViewModels
                 }
                 else
                 {
-                    int abortedMods = totalMods - builtMods;
-                    StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {builtMods} out of {totalMods} mods ({abortedMods} aborted)";
+                    int notBuiltMods = totalMods - builtMods;
+                    StatusText = $"{totalTexturesCopied} textures copied satisfying {totalFixableRefs} fixable references across {builtMods} out of {totalMods} mods ({notBuiltMods} not built)";
                 }
             }
             else if (SelectedMainTabIndex == 1)
@@ -1830,7 +1897,7 @@ namespace BeamNGTextureFixer.ViewModels
                     return;
                 }
 
-                int fixableRefs = SelectedBatchResult.ResolvedFromOld;
+                int fixableRefs = CountFixableReferences(SelectedBatchResult);
                 int texturesOverall = SelectedBatchResult.TextureRefs;
                 string modName = SelectedBatchResult.ModName;
 

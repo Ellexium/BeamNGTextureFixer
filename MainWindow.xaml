@@ -243,6 +243,18 @@
                                   Foreground="White"
                                   Height="16"
                                   Margin="10,0,10,0"/>
+
+                        <CheckBox Content="Use same texture names from different locations"
+                                  IsChecked="{Binding UseSameBasenameCurrentContentFixes}"
+                                  Foreground="White"
+                                  Height="16"
+                                  Margin="10,0,10,0"/>
+                        
+                        <CheckBox Content="Prioritize Fixing with Old Textures"
+                                  IsChecked="{Binding PreferOldContentRecovery}"
+                                  Foreground="White"
+                                  Height="16"
+                                  Margin="10,0,10,0"/>
                         
                     </StackPanel>
                 </Grid>

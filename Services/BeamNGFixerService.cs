@@ -425,6 +425,21 @@ namespace BeamNGTextureFixer.Services
                     if (assign.Groups["stage"].Success)
                         int.TryParse(assign.Groups["stage"].Value, out stageIndex);
 
+                    var normalizedValue = PathHelpers.NormalizePath(value);
+
+                    bool hasPath =
+                        normalizedValue.Contains('/') ||
+                        normalizedValue.Contains('\\');
+
+                    if (!hasPath)
+                    {
+                        var materialFolder = Path.GetDirectoryName(PathHelpers.NormalizePath(matFile)) ?? string.Empty;
+                        materialFolder = PathHelpers.NormalizePath(materialFolder);
+
+                        if (!string.IsNullOrWhiteSpace(materialFolder))
+                            normalizedValue = PathHelpers.NormalizePath($"{materialFolder}/{normalizedValue}");
+                    }
+
                     refs.Add(new TextureRef
                     {
                         MaterialFile = matFile,
@@ -432,7 +447,7 @@ namespace BeamNGTextureFixer.Services
                         StageIndex = stageIndex,
                         Key = key,
                         OriginalValue = value,
-                        NormalizedValue = PathHelpers.NormalizePath(value),
+                        NormalizedValue = normalizedValue,
                         ExtractionMode = "cs"
                     });
                 }
@@ -543,7 +558,7 @@ namespace BeamNGTextureFixer.Services
             var wantedLower = reference.NormalizedValue.ToLowerInvariant();
             var stem = Path.ChangeExtension(wantedLower, null)?.TrimEnd('.') ?? string.Empty;
             var b = PathHelpers.Basename(wantedLower).ToLowerInvariant();
-            var n = PathHelpers.NormalizeNameOnly(wantedLower);
+            var n = PathHelpers.NormalizeNameOnly2(wantedLower);
 
             if (currentIndexes.Exact.TryGetValue(wantedLower, out var exact))
                 return new SearchHit { Status = "current_content", MatchType = "current_exact", SourceZipPath = exact[0].ZipPath, InternalPath = exact[0].InternalPath };
@@ -562,7 +577,7 @@ namespace BeamNGTextureFixer.Services
             var wantedLower = reference.NormalizedValue.ToLowerInvariant();
             var stem = Path.ChangeExtension(wantedLower, null)?.TrimEnd('.') ?? string.Empty;
             var b = PathHelpers.Basename(wantedLower).ToLowerInvariant();
-            var n = PathHelpers.NormalizeNameOnly(wantedLower);
+            var n = PathHelpers.NormalizeNameOnly2(wantedLower);
 
             if (oldIndexes.Exact.TryGetValue(wantedLower, out var exact))
                 return new SearchHit { Status = "resolved_from_old", MatchType = "exact_path", SourceZipPath = exact[0].ZipPath, InternalPath = exact[0].InternalPath };
@@ -577,11 +592,12 @@ namespace BeamNGTextureFixer.Services
         }
 
         public ScanSummary Scan(
-    string modZipPath,
-    string oldFolder,
-    string? currentFolder = null,
-    CancellationToken token = default,
-    Action<int, int, string>? progressCallback = null)
+            string modZipPath,
+            string oldFolder,
+            string? currentFolder = null,
+            bool preferOldContentRecovery = false,
+            CancellationToken token = default,
+            Action<int, int, string>? progressCallback = null)
         {
             ClearScanState();
 
@@ -605,6 +621,7 @@ namespace BeamNGTextureFixer.Services
                 token.ThrowIfCancellationRequested();
 
                 SearchHit hit;
+
                 if (modLower.Contains(reference.NormalizedValue.ToLowerInvariant()))
                 {
                     hit = new SearchHit
@@ -618,19 +635,51 @@ namespace BeamNGTextureFixer.Services
                 }
                 else
                 {
-                    var currentHit = FindInCurrent(reference, currentIndexes);
-                    if (currentHit is not null)
+                    if (preferOldContentRecovery)
                     {
-                        hit = currentHit;
-                        satisfiedByCurrent++;
+                        // OLD FIRST
+                        var oldHit = FindInOld(reference, oldIndexes);
+
+                        if (oldHit.Status == "resolved_from_old")
+                        {
+                            hit = oldHit;
+                            resolvedFromOld++;
+                        }
+                        else
+                        {
+                            var currentHit = FindInCurrent(reference, currentIndexes);
+
+                            if (currentHit is not null)
+                            {
+                                hit = currentHit;
+                                satisfiedByCurrent++;
+                            }
+                            else
+                            {
+                                hit = oldHit; // unresolved
+                                unresolved++;
+                            }
+                        }
                     }
                     else
                     {
-                        hit = FindInOld(reference, oldIndexes);
-                        if (hit.Status == "resolved_from_old")
-                            resolvedFromOld++;
+                        // CURRENT FIRST (existing behavior)
+                        var currentHit = FindInCurrent(reference, currentIndexes);
+
+                        if (currentHit is not null)
+                        {
+                            hit = currentHit;
+                            satisfiedByCurrent++;
+                        }
                         else
-                            unresolved++;
+                        {
+                            hit = FindInOld(reference, oldIndexes);
+
+                            if (hit.Status == "resolved_from_old")
+                                resolvedFromOld++;
+                            else
+                                unresolved++;
+                        }
                     }
                 }
 
@@ -661,13 +710,15 @@ namespace BeamNGTextureFixer.Services
             };
         }
 
-        public Dictionary<(string SourceZipPath, string BasenameLower), int> BasenameCollisionsWithinSourceZip(bool useNormalizedCurrentContentFixes)
+        public Dictionary<(string SourceZipPath, string BasenameLower), int> BasenameCollisionsWithinSourceZip(
+            bool useNormalizedCurrentContentFixes,
+            bool useSameBasenameCurrentContentFixes)
         {
             var counts = new Dictionary<(string SourceZipPath, string BasenameLower), int>();
 
             foreach (var (reference, hit) in ScanResults)
             {
-                if (!ShouldUseRewriteHit(reference, hit, useNormalizedCurrentContentFixes) ||
+                if (!ShouldUseRewriteHit(reference, hit, useNormalizedCurrentContentFixes, useSameBasenameCurrentContentFixes) ||
                     string.IsNullOrWhiteSpace(hit.SourceZipPath) ||
                     string.IsNullOrWhiteSpace(hit.InternalPath))
                 {
@@ -690,21 +741,22 @@ namespace BeamNGTextureFixer.Services
         private static bool ShouldUseRewriteHit(
             TextureRef reference,
             SearchHit hit,
-            bool useNormalizedCurrentContentFixes)
+            bool useNormalizedCurrentContentFixes,
+            bool useSameBasenameCurrentContentFixes)
         {
-            // Always allow safe old-content recovery
             if (string.Equals(hit.Status, "resolved_from_old", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            // Experimental toggle required beyond this point
-            if (!useNormalizedCurrentContentFixes)
-                return false;
-
-            // Only allow normalized-name matches from current content
             if (!string.Equals(hit.Status, "current_content", StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            return string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase))
+                return useNormalizedCurrentContentFixes;
+
+            if (string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase))
+                return useSameBasenameCurrentContentFixes;
+
+            return false;
         }
         public string SourceFolderForMatch(string modStem, SearchHit hit)
         {
@@ -717,12 +769,15 @@ namespace BeamNGTextureFixer.Services
             SearchHit hit,
             string modStem,
             bool useNormalizedCurrentContentFixes,
+            bool useSameBasenameCurrentContentFixes,
             Dictionary<(string SourceZipPath, string BasenameLower), int>? collisionCounts = null)
         {
             if (string.IsNullOrWhiteSpace(hit.SourceZipPath) || string.IsNullOrWhiteSpace(hit.InternalPath))
                 throw new InvalidOperationException("Resolved hit is missing source zip path or internal path.");
 
-            collisionCounts ??= BasenameCollisionsWithinSourceZip(useNormalizedCurrentContentFixes);
+            collisionCounts ??= BasenameCollisionsWithinSourceZip(
+                useNormalizedCurrentContentFixes,
+                useSameBasenameCurrentContentFixes);
 
             var folder = SourceFolderForMatch(modStem, hit);
             var key = (hit.SourceZipPath!, PathHelpers.Basename(hit.InternalPath).ToLowerInvariant());
@@ -733,13 +788,17 @@ namespace BeamNGTextureFixer.Services
             return $"{folder}/{PathHelpers.Basename(hit.InternalPath)}";
         }
 
-        public RewritePlan BuildRewritePlan(bool useNormalizedCurrentContentFixes)
+        public RewritePlan BuildRewritePlan(
+            bool useNormalizedCurrentContentFixes,
+            bool useSameBasenameCurrentContentFixes)
         {
             if (string.IsNullOrWhiteSpace(ModZipPath))
                 throw new InvalidOperationException("No mod scanned.");
 
             var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(ModZipPath));
-            var collisionCounts = BasenameCollisionsWithinSourceZip(useNormalizedCurrentContentFixes);
+            var collisionCounts = BasenameCollisionsWithinSourceZip(
+                useNormalizedCurrentContentFixes,
+                useSameBasenameCurrentContentFixes);
 
             var rewritesByJson = new Dictionary<(string MaterialFile, string MaterialName, int StageIndex, string Key, string OriginalValue), string>();
             var rewritesByText = new Dictionary<string, List<TextRewrite>>(StringComparer.OrdinalIgnoreCase);
@@ -747,13 +806,18 @@ namespace BeamNGTextureFixer.Services
 
             foreach (var (reference, hit) in ScanResults)
             {
-                if (!ShouldUseRewriteHit(reference, hit, useNormalizedCurrentContentFixes))
+                if (!ShouldUseRewriteHit(reference, hit, useNormalizedCurrentContentFixes, useSameBasenameCurrentContentFixes))
                     continue;
 
                 if (string.IsNullOrWhiteSpace(hit.SourceZipPath) || string.IsNullOrWhiteSpace(hit.InternalPath))
                     continue;
 
-                var newPath = MakeMissingfilefixTarget(hit, modStem, useNormalizedCurrentContentFixes, collisionCounts);
+                var newPath = MakeMissingfilefixTarget(
+                    hit,
+                    modStem,
+                    useNormalizedCurrentContentFixes,
+                    useSameBasenameCurrentContentFixes,
+                    collisionCounts);
                 copyJobs[(hit.SourceZipPath!, hit.InternalPath!)] = newPath;
 
                 if (string.Equals(reference.ExtractionMode, "json", StringComparison.OrdinalIgnoreCase))
@@ -790,6 +854,7 @@ namespace BeamNGTextureFixer.Services
         public BuildFixedResult BuildFixedMod(
             string outPath,
             bool useNormalizedCurrentContentFixes,
+            bool useSameBasenameCurrentContentFixes,
             Action<int, int, string>? progressCallback = null,
             CancellationToken token = default)
         {
@@ -798,7 +863,9 @@ namespace BeamNGTextureFixer.Services
 
             progressCallback?.Invoke(2, 100, "Preparing fixed mod...");
 
-            var plan = BuildRewritePlan(useNormalizedCurrentContentFixes);
+            var plan = BuildRewritePlan(
+                useNormalizedCurrentContentFixes,
+                useSameBasenameCurrentContentFixes);
 
             progressCallback?.Invoke(8, 100, "Rewrite plan ready...");
 
