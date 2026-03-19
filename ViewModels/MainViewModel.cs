@@ -225,6 +225,8 @@ namespace BeamNGTextureFixer.ViewModels
             SelectedMods.Clear();
             SelectedModsDisplay = string.Empty;
         }
+
+        public RelayCommand AggressivePassCommand { get; }
         public MainViewModel()
         {
             BrowseOldCommand = new RelayCommand(BrowseOldFolder);
@@ -236,7 +238,8 @@ namespace BeamNGTextureFixer.ViewModels
             ClearModsCommand = new RelayCommand(ClearMods);
 
             ScanCommand = new RelayCommand(ScanMods);
-            BuildCommand = new RelayCommand(BuildModsPlaceholder);
+            BuildCommand = new RelayCommand(BuildModsPlaceholder, CanBuildFirstPass);
+            AggressivePassCommand = new RelayCommand(RunAggressivePassPlaceholder, CanRunAggressivePass);
 
             AbortCommand = new RelayCommand(AbortWork, () => CanAbort);
 
@@ -247,6 +250,30 @@ namespace BeamNGTextureFixer.ViewModels
             // ExportTextureReportCommand = new RelayCommand(ExportTextureReport, () => SelectedBatchResult is not null && DetailRows.Count > 0);
         }
 
+        private bool CanBuildFirstPass()
+        {
+            if (IsBusy)
+                return false;
+
+            return BatchResults.Any(x =>
+                !string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) &&
+                x.ResolvedFromOld > 0);
+        }
+
+        private void RefreshActionButtons()
+        {
+            BuildCommand.RaiseCanExecuteChanged();
+            AggressivePassCommand.RaiseCanExecuteChanged();
+        }
+        private bool CanRunAggressivePass()
+        {
+            if (IsBusy)
+                return false;
+
+            return BatchResults.Any(x =>
+                string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) &&
+                !x.AggressivePassRan);
+        }
         private void ExportTextureReport()
         {
             if (SelectedBatchResult is null)
@@ -576,6 +603,7 @@ namespace BeamNGTextureFixer.ViewModels
             }
 
             BatchResults.Clear();
+            RefreshActionButtons();
             DetailRows = new List<DetailRow>();
             SecondPassRows = new List<SecondPassRow>();
             ThirdPassRows = new List<ThirdPassRow>();
@@ -584,7 +612,9 @@ namespace BeamNGTextureFixer.ViewModels
             ThirdPassSummaryText = "No third pass data yet.";
 
             BeginBusy();
+            RefreshActionButtons();
             StatusText = "Counting material files...";
+
             IsProgressIndeterminate = true;
 
             await System.Windows.Application.Current.Dispatcher.InvokeAsync(
@@ -721,6 +751,8 @@ namespace BeamNGTextureFixer.ViewModels
                                 BuildStatus = "not built",
                                 FixesMade = 0,
                                 OutZip = "",
+                                AggressivePassRan = false,
+                                AggressivePassStatus = "not run",
                                 Service = service,
                                 MaterialFinderResult = materialFinderResult,
                                 GeneratedMaterialDefinitionResult = generatedMaterialResult
@@ -834,6 +866,7 @@ namespace BeamNGTextureFixer.ViewModels
 
                 if (BatchResults.Count > 0)
                     UpdateStatusSummary();
+                    RefreshActionButtons();
             }
         }
         public List<BatchResultRow> FixableMods =>
@@ -1224,6 +1257,83 @@ namespace BeamNGTextureFixer.ViewModels
             finally
             {
                 EndBusy();
+                UpdateStatusSummary();
+                RefreshActionButtons();
+            }
+        }
+
+        private async void RunAggressivePassPlaceholder()
+        {
+            if (BatchResults.Count == 0)
+            {
+                MessageBox.Show("Scan and build one or more mods first.", "No Built Mods");
+                return;
+            }
+
+            var rowsToProcess = BatchResults
+                .Where(x =>
+                    string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) &&
+                    !x.AggressivePassRan)
+                .ToList();
+
+            if (rowsToProcess.Count == 0)
+            {
+                StatusText = "No built mods are waiting for aggressive pass.";
+                RefreshActionButtons();
+                return;
+            }
+
+            BeginBusy();
+            RefreshActionButtons();
+            StatusText = "Running aggressive pass...";
+
+            var token = _cts?.Token ?? CancellationToken.None;
+
+            try
+            {
+                await Task.Run(() =>
+                {
+                    foreach (var row in rowsToProcess)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        var targetZip = ReplaceOriginalMod
+                            ? row.ModZip
+                            : row.OutZip;
+
+                        if (string.IsNullOrWhiteSpace(targetZip) || !File.Exists(targetZip))
+                        {
+                            row.AggressivePassRan = false;
+                            row.AggressivePassStatus = "missing built zip";
+                            continue;
+                        }
+
+                        // placeholder for:
+                        // 1. MaterialFinder on targetZip
+                        // 2. GeneratedMaterialDefinitionService on targetZip
+                        // 3. copy localized textures into missingfilefix_<mod>_tfgeneratedlocalization/
+                        // 4. inject tfgenerated.materials.json into targetZip
+
+                        row.AggressivePassRan = true;
+                        row.AggressivePassStatus = "done";
+                    }
+                }, token);
+
+                StatusText = "Aggressive pass complete.";
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Aggressive pass aborted.";
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Error during aggressive pass.";
+                MessageBox.Show(ex.Message, "Aggressive Pass Error");
+            }
+            finally
+            {
+                EndBusy();
+                RefreshActionButtons();
                 UpdateStatusSummary();
             }
         }

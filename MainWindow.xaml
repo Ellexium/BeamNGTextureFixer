@@ -210,35 +210,43 @@
                             Command="{Binding ClearModsCommand}" />
 
                     <StackPanel Grid.Row="3"
-                                Grid.Column="0"
-                                Grid.ColumnSpan="3"
-                                Orientation="Horizontal"
-                                Margin="0,18,0,0">
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="3"
+                                    Orientation="Horizontal"
+                                    Margin="0,18,0,0">
                         <Button Content="Scan Mod(s)"
-                                Width="140"
-                                Height="36"
-                                Margin="0,0,10,0"
-                                Command="{Binding ScanCommand}" />
+                                    Width="140"
+                                    Height="36"
+                                    Margin="0,0,10,0"
+                                    Command="{Binding ScanCommand}" />
+
                         <Button Content="Build Fixed Mod(s)"
-                                Width="160"
-                                Height="36"
-                                Command="{Binding BuildCommand}" />
-                        <CheckBox
-                                Content="Replace original mod instead of creating _fixed.zip"
-                                IsChecked="{Binding ReplaceOriginalMod}"
-                                Foreground="White"
-                                Height="16"
-                                Margin="10,0,10,0"/>
+                                    Width="160"
+                                    Height="36"
+                                    Margin="0,0,10,0"
+                                    Command="{Binding BuildCommand}" />
+
+                        <Button Content="Aggressive Passes"
+                                    Width="150"
+                                    Height="36"
+                                    Margin="0,0,10,0"
+                                    Command="{Binding AggressivePassCommand}" />
+
+                        <CheckBox Content="Replace original mod instead of creating _fixed.zip"
+                                  IsChecked="{Binding ReplaceOriginalMod}"
+                                  Foreground="White"
+                                  Height="16"
+                                  Margin="10,0,10,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
             <TabControl Grid.Row="3"
-        Margin="0,0,0,0"
-        Background="{StaticResource CardBackgroundBrush}"
-        BorderBrush="{StaticResource ControlBorderBrush}"
-        BorderThickness="1"
-        SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
+                Margin="0,0,0,0"
+                Background="{StaticResource CardBackgroundBrush}"
+                BorderBrush="{StaticResource ControlBorderBrush}"
+                BorderThickness="1"
+                SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
 
                 <TabItem Header="Summary">
                     <Grid Margin="12">
@@ -299,6 +307,8 @@
                                         <DataGridTextColumn Header="Build Status" Binding="{Binding BuildStatus}" Width="100"/>
                                         <DataGridTextColumn Header="Fixes Made" Binding="{Binding FixesMade}" Width="100"/>
                                         <DataGridTextColumn Header="Built Zip" Binding="{Binding OutZip}" Width="240"/>
+                                        <DataGridTextColumn Header="Aggressive Ran" Binding="{Binding AggressivePassRan}" Width="110"/>
+                                        <DataGridTextColumn Header="Aggressive Status" Binding="{Binding AggressivePassStatus}" Width="140"/>
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </Grid>

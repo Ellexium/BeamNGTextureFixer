@@ -14,15 +14,18 @@ namespace BeamNGTextureFixer.Models
         public int SatisfiedByCurrent { get; set; }
         public int ResolvedFromOld { get; set; }
         public int Unresolved { get; set; }
+
         public string BuildStatus { get; set; } = "not built";
         public int FixesMade { get; set; }
         public string FixSummary => $"{ResolvedFromOld} / {FixesMade}";
         public string OutZip { get; set; } = "";
 
+        public bool AggressivePassRan { get; set; }
+        public string AggressivePassStatus { get; set; } = "not run";
+
         public List<DetailRow> DetailRows { get; set; } = new();
 
         public BeamNGFixerService? Service { get; set; }
-
         public MaterialFinderResult? MaterialFinderResult { get; set; }
         public GeneratedMaterialDefinitionResult? GeneratedMaterialDefinitionResult { get; set; }
 
