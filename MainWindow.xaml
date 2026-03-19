@@ -232,13 +232,13 @@
                                     Margin="0,0,10,0"
                                     Command="{Binding AggressivePassCommand}" />
 
-                        <CheckBox Content="Replace original mod instead of creating _fixed.zip"
+                        <CheckBox Content="Replace original mod"
                                   IsChecked="{Binding ReplaceOriginalMod}"
                                   Foreground="White"
                                   Height="16"
                                   Margin="10,0,10,0"/>
                         
-                        <CheckBox Content="Guess new additional texture names from current content"
+                        <CheckBox Content="Guess new current additional texture names"
                                   IsChecked="{Binding UseNormalizedCurrentContentFixes}"
                                   Foreground="White"
                                   Height="16"

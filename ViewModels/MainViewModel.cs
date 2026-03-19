@@ -75,7 +75,18 @@ namespace BeamNGTextureFixer.ViewModels
         public bool UseNormalizedCurrentContentFixes
         {
             get => _useNormalizedCurrentContentFixes;
-            set => SetProperty(ref _useNormalizedCurrentContentFixes, value);
+            set
+            {
+                if (SetProperty(ref _useNormalizedCurrentContentFixes, value))
+                {
+                    RefreshActionButtons();
+
+                    if (BatchResults.Count > 0)
+                    {
+                        ScanMods();
+                    }
+                }
+            }
         }
 
         private CancellationTokenSource? _cts;
@@ -286,7 +297,7 @@ namespace BeamNGTextureFixer.ViewModels
 
             return BatchResults.Any(x =>
                 !string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) &&
-                x.ResolvedFromOld > 0);
+                x.DetailRows.Any(d => !string.IsNullOrWhiteSpace(d.NewPath)));
         }
 
         private bool CanRunAggressivePass()
@@ -756,7 +767,7 @@ namespace BeamNGTextureFixer.ViewModels
                             };
 
                             var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(service.ModZipPath));
-                            var collisionCounts = service.BasenameCollisionsWithinSourceZip();
+                            var collisionCounts = service.BasenameCollisionsWithinSourceZip(UseNormalizedCurrentContentFixes);
 
                             foreach (var pair in payload.Results)
                             {
@@ -764,8 +775,16 @@ namespace BeamNGTextureFixer.ViewModels
 
                                 var newPath = "";
 
-                                if (pair.Hit.Status == "resolved_from_old")
-                                    newPath = service.MakeMissingfilefixTarget(pair.Hit, modStem, collisionCounts);
+                                if (ShouldPreviewExperimentalRewrite(pair.Ref, pair.Hit) &&
+                                    !string.IsNullOrWhiteSpace(pair.Hit.SourceZipPath) &&
+                                    !string.IsNullOrWhiteSpace(pair.Hit.InternalPath))
+                                {
+                                    newPath = service.MakeMissingfilefixTarget(
+                                        pair.Hit,
+                                        modStem,
+                                        UseNormalizedCurrentContentFixes,
+                                        collisionCounts);
+                                }
 
                                 row.DetailRows.Add(new DetailRow
                                 {
@@ -1130,7 +1149,7 @@ namespace BeamNGTextureFixer.ViewModels
             };
         }
         public List<BatchResultRow> FixableMods =>
-            BatchResults.Where(x => x.ResolvedFromOld > 0).ToList();
+            BatchResults.Where(x => x.DetailRows.Any(d => !string.IsNullOrWhiteSpace(d.NewPath))).ToList();
 
         private void LoadDetailRows(BatchResultRow? row)
         {
@@ -1154,7 +1173,19 @@ namespace BeamNGTextureFixer.ViewModels
         }
 
 
+        private bool ShouldPreviewExperimentalRewrite(TextureRef reference, SearchHit hit)
+        {
+            if (string.Equals(hit.Status, "resolved_from_old", StringComparison.OrdinalIgnoreCase))
+                return true;
 
+            if (!UseNormalizedCurrentContentFixes)
+                return false;
+
+            if (!string.Equals(hit.Status, "current_content", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase);
+        }
         private static string BuildSecondPassNotes(MaterialIssueRecord issue, MaterialDefinitionRecord? primaryDef)
         {
             if (issue.IssueType == "referenced_but_undefined")
@@ -1205,7 +1236,7 @@ namespace BeamNGTextureFixer.ViewModels
             if (ReplaceOriginalMod)
             {
                 var result = MessageBox.Show(
-                    "This will replace the original selected mod zip file(s).\n\nContinue?",
+                    "This will replace the original selected mod zip file(s) instead of copying the same one(s) and adding '_fixed' to name.\n\nContinue?",
                     "Replace Original Mod",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
@@ -1256,6 +1287,7 @@ namespace BeamNGTextureFixer.ViewModels
 
                             var result = row.Service.BuildFixedMod(
                                 outPath,
+                                UseNormalizedCurrentContentFixes,
                                 (done, total, message) =>
                                 {
                                     System.Windows.Application.Current.Dispatcher.Invoke(() =>

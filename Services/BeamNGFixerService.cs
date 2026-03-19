@@ -661,38 +661,68 @@ namespace BeamNGTextureFixer.Services
             };
         }
 
-        public Dictionary<(string SourceZipPath, string BasenameLower), int> BasenameCollisionsWithinSourceZip()
+        public Dictionary<(string SourceZipPath, string BasenameLower), int> BasenameCollisionsWithinSourceZip(bool useNormalizedCurrentContentFixes)
         {
             var counts = new Dictionary<(string SourceZipPath, string BasenameLower), int>();
 
-            foreach (var (_, hit) in ScanResults)
+            foreach (var (reference, hit) in ScanResults)
             {
-                if (hit.Status != "resolved_from_old" ||
+                if (!ShouldUseRewriteHit(reference, hit, useNormalizedCurrentContentFixes) ||
                     string.IsNullOrWhiteSpace(hit.SourceZipPath) ||
                     string.IsNullOrWhiteSpace(hit.InternalPath))
                 {
                     continue;
                 }
 
-                var key = (hit.SourceZipPath!, PathHelpers.Basename(hit.InternalPath).ToLowerInvariant());
-                counts[key] = counts.TryGetValue(key, out var existing) ? existing + 1 : 1;
+                var key = (
+                    hit.SourceZipPath!,
+                    PathHelpers.Basename(hit.InternalPath).ToLowerInvariant()
+                );
+
+                counts[key] = counts.TryGetValue(key, out var existing)
+                    ? existing + 1
+                    : 1;
             }
 
             return counts;
         }
 
+        private static bool ShouldUseRewriteHit(
+            TextureRef reference,
+            SearchHit hit,
+            bool useNormalizedCurrentContentFixes)
+        {
+            // Always allow safe old-content recovery
+            if (string.Equals(hit.Status, "resolved_from_old", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // Experimental toggle required beyond this point
+            if (!useNormalizedCurrentContentFixes)
+                return false;
+
+            // Only allow normalized-name matches from current content
+            if (!string.Equals(hit.Status, "current_content", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase);
+        }
         public string SourceFolderForMatch(string modStem, SearchHit hit)
         {
             var sourceZipStem = PathHelpers.SanitizeModStem(Path.GetFileName(hit.SourceZipPath ?? "source"));
             return $"missingfilefix_{modStem}_{sourceZipStem}";
         }
 
-        public string MakeMissingfilefixTarget(SearchHit hit, string modStem, Dictionary<(string SourceZipPath, string BasenameLower), int>? collisionCounts = null)
+
+        public string MakeMissingfilefixTarget(
+            SearchHit hit,
+            string modStem,
+            bool useNormalizedCurrentContentFixes,
+            Dictionary<(string SourceZipPath, string BasenameLower), int>? collisionCounts = null)
         {
             if (string.IsNullOrWhiteSpace(hit.SourceZipPath) || string.IsNullOrWhiteSpace(hit.InternalPath))
                 throw new InvalidOperationException("Resolved hit is missing source zip path or internal path.");
 
-            collisionCounts ??= BasenameCollisionsWithinSourceZip();
+            collisionCounts ??= BasenameCollisionsWithinSourceZip(useNormalizedCurrentContentFixes);
 
             var folder = SourceFolderForMatch(modStem, hit);
             var key = (hit.SourceZipPath!, PathHelpers.Basename(hit.InternalPath).ToLowerInvariant());
@@ -703,13 +733,13 @@ namespace BeamNGTextureFixer.Services
             return $"{folder}/{PathHelpers.Basename(hit.InternalPath)}";
         }
 
-        public RewritePlan BuildRewritePlan()
+        public RewritePlan BuildRewritePlan(bool useNormalizedCurrentContentFixes)
         {
             if (string.IsNullOrWhiteSpace(ModZipPath))
                 throw new InvalidOperationException("No mod scanned.");
 
             var modStem = PathHelpers.SanitizeModStem(Path.GetFileName(ModZipPath));
-            var collisionCounts = BasenameCollisionsWithinSourceZip();
+            var collisionCounts = BasenameCollisionsWithinSourceZip(useNormalizedCurrentContentFixes);
 
             var rewritesByJson = new Dictionary<(string MaterialFile, string MaterialName, int StageIndex, string Key, string OriginalValue), string>();
             var rewritesByText = new Dictionary<string, List<TextRewrite>>(StringComparer.OrdinalIgnoreCase);
@@ -717,13 +747,13 @@ namespace BeamNGTextureFixer.Services
 
             foreach (var (reference, hit) in ScanResults)
             {
-                if (hit.Status != "resolved_from_old")
+                if (!ShouldUseRewriteHit(reference, hit, useNormalizedCurrentContentFixes))
                     continue;
 
                 if (string.IsNullOrWhiteSpace(hit.SourceZipPath) || string.IsNullOrWhiteSpace(hit.InternalPath))
                     continue;
 
-                var newPath = MakeMissingfilefixTarget(hit, modStem, collisionCounts);
+                var newPath = MakeMissingfilefixTarget(hit, modStem, useNormalizedCurrentContentFixes, collisionCounts);
                 copyJobs[(hit.SourceZipPath!, hit.InternalPath!)] = newPath;
 
                 if (string.Equals(reference.ExtractionMode, "json", StringComparison.OrdinalIgnoreCase))
@@ -757,14 +787,18 @@ namespace BeamNGTextureFixer.Services
             };
         }
 
-        public BuildFixedResult BuildFixedMod(string outPath, Action<int, int, string>? progressCallback = null, CancellationToken token = default)
+        public BuildFixedResult BuildFixedMod(
+            string outPath,
+            bool useNormalizedCurrentContentFixes,
+            Action<int, int, string>? progressCallback = null,
+            CancellationToken token = default)
         {
             if (string.IsNullOrWhiteSpace(ModZipPath))
                 throw new InvalidOperationException("No mod scanned.");
 
             progressCallback?.Invoke(2, 100, "Preparing fixed mod...");
 
-            var plan = BuildRewritePlan();
+            var plan = BuildRewritePlan(useNormalizedCurrentContentFixes);
 
             progressCallback?.Invoke(8, 100, "Rewrite plan ready...");
 
