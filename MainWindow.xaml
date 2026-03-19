@@ -215,19 +215,19 @@
                                     Orientation="Horizontal"
                                     Margin="0,18,0,0">
                         <Button Content="Scan Mod(s)"
-                                    Width="140"
+                                    Width="99"
                                     Height="36"
                                     Margin="0,0,10,0"
                                     Command="{Binding ScanCommand}" />
 
                         <Button Content="Build Fixed Mod(s)"
-                                    Width="160"
+                                    Width="120"
                                     Height="36"
                                     Margin="0,0,10,0"
                                     Command="{Binding BuildCommand}" />
 
-                        <Button Content="Aggressive Passes"
-                                    Width="150"
+                        <Button Content="Do Extra Passes (May fix more textures)"
+                                    Width="240"
                                     Height="36"
                                     Margin="0,0,10,0"
                                     Command="{Binding AggressivePassCommand}" />
@@ -237,6 +237,13 @@
                                   Foreground="White"
                                   Height="16"
                                   Margin="10,0,10,0"/>
+                        
+                        <CheckBox Content="Guess new additional texture names from current content"
+                                  IsChecked="{Binding UseNormalizedCurrentContentFixes}"
+                                  Foreground="White"
+                                  Height="16"
+                                  Margin="10,0,10,0"/>
+                        
                     </StackPanel>
                 </Grid>
             </Border>
@@ -585,6 +592,7 @@
                                         <DataGridTextColumn Header="Localaization Status" Binding="{Binding ActionTaken}" Width="180"/>
                                         <DataGridTextColumn Header="Imported From" Binding="{Binding ImportedFrom}" Width="320"/>
                                         <DataGridTextColumn Header="Injected Into" Binding="{Binding InjectedInto}" Width="260"/>
+                                        <DataGridTextColumn Header="Texture Files Referenced" Binding="{Binding TextureFilesReferenced}" Width="150"/>
                                         <DataGridTextColumn Header="Textures Copied" Binding="{Binding TexturesCopied}" Width="120"/>
                                         <DataGridTextColumn Header="Final Status" Binding="{Binding FinalStatus}" Width="160"/>
                                         <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="320"/>

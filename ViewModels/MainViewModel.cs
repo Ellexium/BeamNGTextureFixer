@@ -5,14 +5,16 @@ using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
-using System.IO.Compression;
 
 namespace BeamNGTextureFixer.ViewModels
 {
@@ -66,6 +68,14 @@ namespace BeamNGTextureFixer.ViewModels
             {
                 return 0;
             }
+        }
+
+        private bool _useNormalizedCurrentContentFixes;
+
+        public bool UseNormalizedCurrentContentFixes
+        {
+            get => _useNormalizedCurrentContentFixes;
+            set => SetProperty(ref _useNormalizedCurrentContentFixes, value);
         }
 
         private CancellationTokenSource? _cts;
@@ -319,20 +329,26 @@ namespace BeamNGTextureFixer.ViewModels
                 {
                     WriteCsvRow(writer, new[]
                     {
-                row.MaterialFile,
-                row.ParseMode,
-                row.MaterialName,
-                row.StageIndex.ToString(),
-                row.Key,
-                row.OriginalPath,
-                row.Status,
-                row.MatchType,
-                row.Source,
-                row.NewPath
-            });
+                        row.MaterialFile,
+                        row.ParseMode,
+                        row.MaterialName,
+                        row.StageIndex.ToString(),
+                        row.Key,
+                        row.OriginalPath,
+                        row.Status,
+                        row.MatchType,
+                        row.Source,
+                        row.NewPath
+                    });
                 }
 
                 MessageBox.Show($"First pass report exported:\n\n{csvPath}", "First Pass");
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = csvPath,
+                    UseShellExecute = true
+                });
             }
             catch (Exception ex)
             {
@@ -374,20 +390,26 @@ namespace BeamNGTextureFixer.ViewModels
                 {
                     WriteCsvRow(writer, new[]
                     {
-                row.MaterialName,
-                row.ReferenceCount.ToString(),
-                row.Status,
-                row.DefinitionPath,
-                row.DefinitionOrigin,
-                row.ColorMap,
-                row.NormalMap,
-                row.SpecularMap,
-                row.GeneratedDefinition,
-                row.Notes
-            });
+                        row.MaterialName,
+                        row.ReferenceCount.ToString(),
+                        row.Status,
+                        row.DefinitionPath,
+                        row.DefinitionOrigin,
+                        row.ColorMap,
+                        row.NormalMap,
+                        row.SpecularMap,
+                        row.GeneratedDefinition,
+                        row.Notes
+                    });
                 }
 
                 MessageBox.Show($"Second pass table exported:\n\n{csvPath}", "Second Pass");
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = csvPath,
+                    UseShellExecute = true
+                });
             }
             catch (Exception ex)
             {
@@ -441,6 +463,12 @@ namespace BeamNGTextureFixer.ViewModels
                 }
 
                 MessageBox.Show($"Third pass table exported:\n\n{csvPath}", "Third Pass");
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = csvPath,
+                    UseShellExecute = true
+                });
             }
             catch (Exception ex)
             {
@@ -947,25 +975,35 @@ namespace BeamNGTextureFixer.ViewModels
                 return;
             }
 
-            static bool IsUnreferencedIssue(string? issueType) =>
-                string.Equals(issueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(issueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
 
-            var visibleIssues = materialFinderResult.Issues
-                .Where(issue => !IsUnreferencedIssue(issue.IssueType))
-                .OrderBy(issue => issue.MaterialName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            _generatedResultsByTargetZip.TryGetValue(targetZip, out var generatedResult);
 
-            var issueRows = visibleIssues
+            var issueRows = materialFinderResult.Issues
+                .Where(x =>
+                    !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
                 .Select(issue =>
                 {
                     var primaryDef = PickPrimaryDefinition(issue.Definitions);
-                    bool isReferenced = !IsUnreferencedIssue(issue.IssueType);
+
+                    var candidate = generatedResult?.Candidates
+                        .FirstOrDefault(c => string.Equals(c.MaterialName, issue.MaterialName, StringComparison.OrdinalIgnoreCase));
+
+                    bool isReferenced =
+                        !string.Equals(issue.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(issue.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase);
+
+                    bool candidateBuildable =
+                        candidate is not null &&
+                        !string.Equals(candidate.GenerationStatus, "no_generated_candidate", StringComparison.OrdinalIgnoreCase);
 
                     bool shouldLocalize =
                         isReferenced &&
-                        primaryDef is not null &&
-                        !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase);
+                        (
+                            (primaryDef is not null && !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase))
+                            || candidateBuildable
+                        );
 
                     string importedFrom = primaryDef is null
                         ? ""
@@ -984,19 +1022,60 @@ namespace BeamNGTextureFixer.ViewModels
                         : "no_aggressive_action_needed";
 
                     string notes;
-                    if (primaryDef is null)
+                    if (primaryDef is null && !candidateBuildable)
                     {
                         notes = issue.IssueType == "referenced_but_undefined"
-                            ? "No definition was found anywhere, so aggressive localization cannot copy a real external definition yet."
+                            ? "No definition was found anywhere, and no viable generated candidate exists."
                             : "No primary definition found.";
+                    }
+                    else if (candidateBuildable && primaryDef is null)
+                    {
+                        notes = "No definition exists, but a generated material candidate will be used.";
                     }
                     else if (shouldLocalize)
                     {
-                        notes = "Definition exists outside the mod. Aggressive pass should recreate this material locally in tfgenerated.materials.json.";
+                        notes = "Definition exists outside the mod. Aggressive pass will recreate this material locally.";
                     }
                     else
                     {
                         notes = "Definition is already inside the mod, so aggressive localization is not needed.";
+                    }
+
+                    int textureFilesReferenced;
+                    int texturesCopied;
+
+                    // CASE 1: External definition
+                    if (primaryDef is not null)
+                    {
+                        var referencedPaths = primaryDef.TextureRefs
+                            .Where(t => !string.IsNullOrWhiteSpace(t.OriginalValue))
+                            .Select(t => t.OriginalValue.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+
+                        textureFilesReferenced = referencedPaths.Count;
+
+                        texturesCopied = shouldLocalize
+                            ? referencedPaths.Count
+                            : 0;
+                    }
+                    // CASE 2: Generated candidate
+                    else if (candidateBuildable && candidate is not null)
+                    {
+                        var generatedPaths = candidate.Slots
+                            .Select(s => s.Value)
+                            .Where(v => v != null && !string.IsNullOrWhiteSpace(v.InternalPath))
+                            .Select(v => v!.InternalPath.Trim())
+                            .ToList();
+
+                        textureFilesReferenced = generatedPaths.Count;
+                        texturesCopied = generatedPaths.Count;
+                    }
+                    // CASE 3: Nothing usable
+                    else
+                    {
+                        textureFilesReferenced = 0;
+                        texturesCopied = 0;
                     }
 
                     return new ThirdPassRow
@@ -1007,7 +1086,8 @@ namespace BeamNGTextureFixer.ViewModels
                         ActionTaken = actionTaken,
                         ImportedFrom = importedFrom,
                         InjectedInto = injectedInto,
-                        TexturesCopied = primaryDef?.TextureRefs.Count ?? 0,
+                        TextureFilesReferenced = textureFilesReferenced,
+                        TexturesCopied = texturesCopied,
                         FinalStatus = finalStatus,
                         Notes = notes
                     };
@@ -1019,7 +1099,9 @@ namespace BeamNGTextureFixer.ViewModels
             ThirdPassSummaryText =
                 $"Third Pass materials tracked: {issueRows.Count}\n" +
                 $"Should localize: {issueRows.Count(x => x.ShouldLocalize == "Yes")}\n" +
-                $"Already local to mod: {issueRows.Count(x => x.ShouldLocalize == "No")}";
+                $"Already local to mod: {issueRows.Count(x => x.ShouldLocalize == "No")}\n" +
+                $"Total texture files referenced: {issueRows.Sum(x => x.TextureFilesReferenced)}\n" +
+                $"Total textures copied: {issueRows.Sum(x => x.TexturesCopied)}";
         }
 
         private static bool IsUnreferencedIssue(string? issueType)
@@ -1302,43 +1384,75 @@ namespace BeamNGTextureFixer.ViewModels
                             continue;
                         }
 
-                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        try
                         {
-                            StatusText = $"{Path.GetFileName(targetZip)} - second pass material scan...";
-                        });
-
-                        var materialFinder = new MaterialFinderService();
-                        var materialFinderResult = materialFinder.Scan(
-                            new MaterialFinderRequest
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
                             {
-                                ModZipPath = targetZip,
-                                CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
-                                OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
-                                ScanReferencesInContentFolders = false
-                            },
-                            token);
+                                StatusText = $"{Path.GetFileName(targetZip)} - second pass material scan...";
+                            });
 
-                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            var materialFinder = new MaterialFinderService();
+                            var materialFinderResult = materialFinder.Scan(
+                                new MaterialFinderRequest
+                                {
+                                    ModZipPath = targetZip,
+                                    CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                                    OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder,
+                                    ScanReferencesInContentFolders = false
+                                },
+                                token);
+
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                StatusText = $"{Path.GetFileName(targetZip)} - third pass generation scan...";
+                            });
+
+                            var generatedService = new GeneratedMaterialDefinitionService();
+                            var generatedMaterialResult = generatedService.BuildSuggestions(
+                                new GeneratedMaterialDefinitionRequest
+                                {
+                                    ModZipPath = targetZip,
+                                    CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
+                                    OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
+                                },
+                                materialFinderResult,
+                                token);
+
+                            _materialFinderResultsByTargetZip[targetZip] = materialFinderResult;
+                            _generatedResultsByTargetZip[targetZip] = generatedMaterialResult;
+
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                StatusText = $"{Path.GetFileName(targetZip)} - injecting generated materials...";
+                            });
+
+                            var aggressiveResult = ApplyAggressiveLocalizationToZip(
+                                targetZip,
+                                materialFinderResult,
+                                generatedMaterialResult,
+                                token);
+
+                            row.AggressivePassRan = true;
+                            row.AggressivePassStatus = aggressiveResult.StatusText;
+
+                            if (!ReplaceOriginalMod)
+                                row.OutZip = targetZip;
+                        }
+                        catch (OperationCanceledException)
                         {
-                            StatusText = $"{Path.GetFileName(targetZip)} - third pass generation scan...";
-                        });
-
-                        var generatedService = new GeneratedMaterialDefinitionService();
-                        var generatedMaterialResult = generatedService.BuildSuggestions(
-                            new GeneratedMaterialDefinitionRequest
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            row.AggressivePassRan = false;
+                            row.AggressivePassStatus = "error";
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
                             {
-                                ModZipPath = targetZip,
-                                CurrentFolder = string.IsNullOrWhiteSpace(CurrentContentFolder) ? string.Empty : CurrentContentFolder,
-                                OldFolder = string.IsNullOrWhiteSpace(OldContentFolder) ? string.Empty : OldContentFolder
-                            },
-                            materialFinderResult,
-                            token);
-
-                        _materialFinderResultsByTargetZip[targetZip] = materialFinderResult;
-                        _generatedResultsByTargetZip[targetZip] = generatedMaterialResult;
-
-                        row.AggressivePassRan = true;
-                        row.AggressivePassStatus = "done";
+                                MessageBox.Show(
+                                    $"Aggressive pass failed for:\n\n{row.ModName}\n\n{ex.Message}",
+                                    "Aggressive Pass Error");
+                            });
+                        }
                     }
                 }, token);
 
@@ -1362,6 +1476,249 @@ namespace BeamNGTextureFixer.ViewModels
                 RefreshActionButtons();
                 UpdateStatusSummary();
             }
+        }
+
+        private sealed class AggressiveApplyResult
+        {
+            public string StatusText { get; set; } = "done";
+            public int MaterialsWritten { get; set; }
+            public int TextureFilesCopied { get; set; }
+        }
+
+        private AggressiveApplyResult ApplyAggressiveLocalizationToZip(
+            string targetZip,
+            MaterialFinderResult materialFinderResult,
+            GeneratedMaterialDefinitionResult generatedMaterialResult,
+            CancellationToken token)
+        {
+            var result = new AggressiveApplyResult();
+
+            var modName = Path.GetFileNameWithoutExtension(targetZip);
+            var localizationFolderName = $"missingfilefix_{modName}_tfgeneratedlocalization";
+
+            var tempRoot = Path.Combine(
+                Path.GetTempPath(),
+                "beamng_texture_fixer_aggressive_" + Guid.NewGuid().ToString("N"));
+
+            Directory.CreateDirectory(tempRoot);
+
+            try
+            {
+                ZipFile.ExtractToDirectory(targetZip, tempRoot);
+
+                var localizationFolderPath = Path.Combine(tempRoot, localizationFolderName);
+                Directory.CreateDirectory(localizationFolderPath);
+
+                var copiedDestNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                var materialsJsonRoot = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var issue in materialFinderResult.Issues
+                             .Where(x => !IsUnreferencedIssue(x.IssueType))
+                             .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase))
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    var primaryDef = PickPrimaryDefinition(issue.Definitions);
+
+                    var candidate = generatedMaterialResult.Candidates
+                        .FirstOrDefault(c => string.Equals(c.MaterialName, issue.MaterialName, StringComparison.OrdinalIgnoreCase));
+
+                    bool candidateBuildable =
+                        candidate is not null &&
+                        !string.Equals(candidate.GenerationStatus, "no_generated_candidate", StringComparison.OrdinalIgnoreCase);
+
+                    bool shouldLocalize =
+                        (primaryDef is not null && !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase))
+                        || candidateBuildable;
+
+                    if (!shouldLocalize)
+                        continue;
+
+                    var stage = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+                    if (primaryDef is not null && !string.Equals(primaryDef.Origin, "mod", StringComparison.OrdinalIgnoreCase))
+                    {
+                        foreach (var dependency in primaryDef.DependencyChecks)
+                        {
+                            token.ThrowIfCancellationRequested();
+
+                            if (dependency.Asset is null)
+                                continue;
+
+                            if (!string.Equals(dependency.Status, "resolved", StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            if (string.IsNullOrWhiteSpace(dependency.Texture?.Key))
+                                continue;
+
+                            var copiedFileName = CopyAssetIntoLocalizationFolder(
+                                dependency.Asset.ArchivePath,
+                                dependency.Asset.InternalPath,
+                                localizationFolderPath,
+                                copiedDestNames);
+
+                            if (string.IsNullOrWhiteSpace(copiedFileName))
+                                continue;
+
+                            stage[dependency.Texture.Key] = $"{localizationFolderName}/{copiedFileName}".Replace("\\", "/");
+                            result.TextureFilesCopied++;
+                        }
+                    }
+                    else if (candidateBuildable && candidate is not null)
+                    {
+                        foreach (var slot in candidate.Slots.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+                        {
+                            token.ThrowIfCancellationRequested();
+
+                            var asset = slot.Value;
+                            if (asset is null)
+                                continue;
+
+                            if (string.IsNullOrWhiteSpace(slot.Key))
+                                continue;
+
+                            var copiedFileName = CopyAssetIntoLocalizationFolder(
+                                asset.ArchivePath,
+                                asset.InternalPath,
+                                localizationFolderPath,
+                                copiedDestNames);
+
+                            if (string.IsNullOrWhiteSpace(copiedFileName))
+                                continue;
+
+                            stage[slot.Key] = $"{localizationFolderName}/{copiedFileName}".Replace("\\", "/");
+                            result.TextureFilesCopied++;
+                        }
+                    }
+
+                    if (stage.Count == 0)
+                        continue;
+
+                    var materialNode = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["name"] = issue.MaterialName,
+                        ["class"] = "Material",
+                        ["Stages"] = new List<Dictionary<string, object>> { stage }
+                    };
+
+                    materialsJsonRoot[issue.MaterialName] = materialNode;
+                    result.MaterialsWritten++;
+                }
+
+                if (materialsJsonRoot.Count == 0)
+                {
+                    result.StatusText = "done - nothing to inject";
+                    return result;
+                }
+
+                var jsonText = JsonSerializer.Serialize(
+                    materialsJsonRoot,
+                    new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    });
+
+                var wroteAny = false;
+
+                var domainFolders = new[] { "vehicles", "levels" };
+
+                foreach (var domain in domainFolders)
+                {
+                    var domainPath = Path.Combine(tempRoot, domain);
+
+                    if (!Directory.Exists(domainPath))
+                        continue;
+
+                    foreach (var subDir in Directory.GetDirectories(domainPath))
+                    {
+                        var materialsJsonPath = Path.Combine(subDir, "tfgenerated.materials.json");
+                        File.WriteAllText(materialsJsonPath, jsonText);
+                        wroteAny = true;
+                    }
+                }
+
+                // fallback: if no vehicles/levels folders exist, write to root
+                if (!wroteAny)
+                {
+                    var fallbackPath = Path.Combine(tempRoot, "tfgenerated.materials.json");
+                    File.WriteAllText(fallbackPath, jsonText);
+                }
+
+                if (File.Exists(targetZip))
+                    File.Delete(targetZip);
+
+                ZipFile.CreateFromDirectory(tempRoot, targetZip, CompressionLevel.Optimal, false);
+
+                result.StatusText = $"done - {result.MaterialsWritten} material(s), {result.TextureFilesCopied} texture path(s)";
+                return result;
+            }
+            finally
+            {
+                try
+                {
+                    if (Directory.Exists(tempRoot))
+                        Directory.Delete(tempRoot, true);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static string? CopyAssetIntoLocalizationFolder(
+            string sourceArchivePath,
+            string internalPath,
+            string localizationFolderPath,
+            HashSet<string> copiedDestNames)
+        {
+            if (string.IsNullOrWhiteSpace(sourceArchivePath) ||
+                string.IsNullOrWhiteSpace(internalPath) ||
+                !File.Exists(sourceArchivePath))
+            {
+                return null;
+            }
+
+            using var zip = ZipFile.OpenRead(sourceArchivePath);
+
+            var normalizedInternalPath = internalPath.Replace("\\", "/").TrimStart('/');
+
+            var entry = zip.Entries.FirstOrDefault(e =>
+                string.Equals(
+                    e.FullName.Replace("\\", "/").TrimStart('/'),
+                    normalizedInternalPath,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (entry is null)
+                return null;
+
+            var originalFileName = Path.GetFileName(normalizedInternalPath);
+            if (string.IsNullOrWhiteSpace(originalFileName))
+                return null;
+
+            var finalFileName = MakeUniqueFileName(originalFileName, copiedDestNames);
+            var destPath = Path.Combine(localizationFolderPath, finalFileName);
+
+            entry.ExtractToFile(destPath, true);
+
+            return finalFileName;
+        }
+
+        private static string MakeUniqueFileName(string originalFileName, HashSet<string> usedNames)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(originalFileName);
+            var ext = Path.GetExtension(originalFileName);
+
+            var candidate = originalFileName;
+            int counter = 2;
+
+            while (!usedNames.Add(candidate))
+            {
+                candidate = $"{baseName}_{counter}{ext}";
+                counter++;
+            }
+
+            return candidate;
         }
 
         private bool _isBusy;
