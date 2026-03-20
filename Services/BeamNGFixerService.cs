@@ -528,7 +528,7 @@ namespace BeamNGTextureFixer.Services
                         var internalPath = PathHelpers.NormalizePath(entry.FullName);
                         Add(index.Exact, internalPath.ToLowerInvariant(), (zipPath, internalPath));
                         Add(index.ByBase, PathHelpers.Basename(internalPath).ToLowerInvariant(), (zipPath, internalPath));
-                        Add(index.ByNormName, PathHelpers.NormalizeNameOnly(internalPath), (zipPath, internalPath));
+                        Add(index.ByNormName, PathHelpers.NormalizeNameOnly2(internalPath), (zipPath, internalPath));
                         Add(index.SamePathOtherExt, Path.ChangeExtension(internalPath, null)?.TrimEnd('.').ToLowerInvariant() ?? string.Empty, (zipPath, internalPath));
                     }
                 }
@@ -550,6 +550,8 @@ namespace BeamNGTextureFixer.Services
             list.Add(value);
         }
 
+
+
         private SearchHit? FindInCurrent(TextureRef reference, ZipIndexService? currentIndexes)
         {
             if (currentIndexes is null)
@@ -559,15 +561,73 @@ namespace BeamNGTextureFixer.Services
             var stem = Path.ChangeExtension(wantedLower, null)?.TrimEnd('.') ?? string.Empty;
             var b = PathHelpers.Basename(wantedLower).ToLowerInvariant();
             var n = PathHelpers.NormalizeNameOnly2(wantedLower);
+            var baseName = PathHelpers.GetBaseName(n);
 
             if (currentIndexes.Exact.TryGetValue(wantedLower, out var exact))
-                return new SearchHit { Status = "current_content", MatchType = "current_exact", SourceZipPath = exact[0].ZipPath, InternalPath = exact[0].InternalPath };
+            {
+                return new SearchHit
+                {
+                    Status = "current_content",
+                    MatchType = "current_exact",
+                    SourceZipPath = exact[0].ZipPath,
+                    InternalPath = exact[0].InternalPath
+                };
+            }
+
             if (currentIndexes.SamePathOtherExt.TryGetValue(stem, out var sameExt))
-                return new SearchHit { Status = "current_content", MatchType = "current_same_path_other_ext", SourceZipPath = sameExt[0].ZipPath, InternalPath = sameExt[0].InternalPath };
+            {
+                return new SearchHit
+                {
+                    Status = "current_content",
+                    MatchType = "current_same_path_other_ext",
+                    SourceZipPath = sameExt[0].ZipPath,
+                    InternalPath = sameExt[0].InternalPath
+                };
+            }
+
             if (currentIndexes.ByBase.TryGetValue(b, out var byBase))
-                return new SearchHit { Status = "current_content", MatchType = "current_same_basename", SourceZipPath = byBase[0].ZipPath, InternalPath = byBase[0].InternalPath };
+            {
+                return new SearchHit
+                {
+                    Status = "current_content",
+                    MatchType = "current_same_basename",
+                    SourceZipPath = byBase[0].ZipPath,
+                    InternalPath = byBase[0].InternalPath
+                };
+            }
+
             if (currentIndexes.ByNormName.TryGetValue(n, out var byNorm))
-                return new SearchHit { Status = "current_content", MatchType = "current_normalized_name", SourceZipPath = byNorm[0].ZipPath, InternalPath = byNorm[0].InternalPath };
+            {
+                return new SearchHit
+                {
+                    Status = "current_content",
+                    MatchType = "current_normalized_name",
+                    SourceZipPath = byNorm[0].ZipPath,
+                    InternalPath = byNorm[0].InternalPath
+                };
+            }
+
+            // broader semantic-family fallback:
+            // fullsizeglass_s -> fullsizeglass
+            if (!string.IsNullOrWhiteSpace(baseName))
+            {
+                var familyMatch = currentIndexes.ByNormName
+                    .FirstOrDefault(kv =>
+                        string.Equals(PathHelpers.GetBaseName(kv.Key), baseName, StringComparison.OrdinalIgnoreCase));
+
+                if (!string.IsNullOrWhiteSpace(familyMatch.Key) &&
+                    familyMatch.Value is not null &&
+                    familyMatch.Value.Count > 0)
+                {
+                    return new SearchHit
+                    {
+                        Status = "current_content",
+                        MatchType = "current_base_name",
+                        SourceZipPath = familyMatch.Value[0].ZipPath,
+                        InternalPath = familyMatch.Value[0].InternalPath
+                    };
+                }
+            }
 
             return null;
         }
@@ -578,17 +638,71 @@ namespace BeamNGTextureFixer.Services
             var stem = Path.ChangeExtension(wantedLower, null)?.TrimEnd('.') ?? string.Empty;
             var b = PathHelpers.Basename(wantedLower).ToLowerInvariant();
             var n = PathHelpers.NormalizeNameOnly2(wantedLower);
+            var baseName = PathHelpers.GetBaseName(n);
 
             if (oldIndexes.Exact.TryGetValue(wantedLower, out var exact))
-                return new SearchHit { Status = "resolved_from_old", MatchType = "exact_path", SourceZipPath = exact[0].ZipPath, InternalPath = exact[0].InternalPath };
-            if (oldIndexes.SamePathOtherExt.TryGetValue(stem, out var sameExt))
-                return new SearchHit { Status = "resolved_from_old", MatchType = "same_path_other_ext", SourceZipPath = sameExt[0].ZipPath, InternalPath = sameExt[0].InternalPath };
-            if (oldIndexes.ByBase.TryGetValue(b, out var byBase))
-                return new SearchHit { Status = "resolved_from_old", MatchType = "same_basename", SourceZipPath = byBase[0].ZipPath, InternalPath = byBase[0].InternalPath };
-            if (oldIndexes.ByNormName.TryGetValue(n, out var byNorm))
-                return new SearchHit { Status = "resolved_from_old", MatchType = "normalized_name", SourceZipPath = byNorm[0].ZipPath, InternalPath = byNorm[0].InternalPath };
+                return new SearchHit
+                {
+                    Status = "resolved_from_old",
+                    MatchType = "exact_path",
+                    SourceZipPath = exact[0].ZipPath,
+                    InternalPath = exact[0].InternalPath
+                };
 
-            return new SearchHit { Status = "unresolved", MatchType = "unresolved", SourceZipPath = null, InternalPath = null };
+            if (oldIndexes.SamePathOtherExt.TryGetValue(stem, out var sameExt))
+                return new SearchHit
+                {
+                    Status = "resolved_from_old",
+                    MatchType = "same_path_other_ext",
+                    SourceZipPath = sameExt[0].ZipPath,
+                    InternalPath = sameExt[0].InternalPath
+                };
+
+            if (oldIndexes.ByBase.TryGetValue(b, out var byBase))
+                return new SearchHit
+                {
+                    Status = "resolved_from_old",
+                    MatchType = "same_basename",
+                    SourceZipPath = byBase[0].ZipPath,
+                    InternalPath = byBase[0].InternalPath
+                };
+
+            if (oldIndexes.ByNormName.TryGetValue(n, out var byNorm))
+                return new SearchHit
+                {
+                    Status = "resolved_from_old",
+                    MatchType = "normalized_name",
+                    SourceZipPath = byNorm[0].ZipPath,
+                    InternalPath = byNorm[0].InternalPath
+                };
+
+            if (!string.IsNullOrWhiteSpace(baseName))
+            {
+                var familyMatch = oldIndexes.ByNormName
+                    .FirstOrDefault(kv =>
+                        string.Equals(PathHelpers.GetBaseName(kv.Key), baseName, StringComparison.OrdinalIgnoreCase));
+
+                if (!string.IsNullOrWhiteSpace(familyMatch.Key) &&
+                    familyMatch.Value is not null &&
+                    familyMatch.Value.Count > 0)
+                {
+                    return new SearchHit
+                    {
+                        Status = "resolved_from_old",
+                        MatchType = "base_name",
+                        SourceZipPath = familyMatch.Value[0].ZipPath,
+                        InternalPath = familyMatch.Value[0].InternalPath
+                    };
+                }
+            }
+
+            return new SearchHit
+            {
+                Status = "unresolved",
+                MatchType = "unresolved",
+                SourceZipPath = null,
+                InternalPath = null
+            };
         }
 
         public ScanSummary Scan(
@@ -744,6 +858,23 @@ namespace BeamNGTextureFixer.Services
             bool useNormalizedCurrentContentFixes,
             bool useSameBasenameCurrentContentFixes)
         {
+            bool isCsMaterial =
+                string.Equals(reference.ExtractionMode, "cs", StringComparison.OrdinalIgnoreCase);
+
+            bool isSpecular =
+                string.Equals(reference.Key, "specularMap", StringComparison.OrdinalIgnoreCase);
+
+            bool isFallbackMatch =
+                string.Equals(hit.MatchType, "normalized_name", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(hit.MatchType, "same_basename", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(hit.MatchType, "base_name", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(hit.MatchType, "current_base_name", StringComparison.OrdinalIgnoreCase);
+
+            if (isCsMaterial && isSpecular && isFallbackMatch)
+                return false;
+
             if (string.Equals(hit.Status, "resolved_from_old", StringComparison.OrdinalIgnoreCase))
                 return true;
 
@@ -753,11 +884,14 @@ namespace BeamNGTextureFixer.Services
             if (string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase))
                 return useNormalizedCurrentContentFixes;
 
-            if (string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(hit.MatchType, "current_base_name", StringComparison.OrdinalIgnoreCase))
                 return useSameBasenameCurrentContentFixes;
 
             return false;
         }
+
+        
         public string SourceFolderForMatch(string modStem, SearchHit hit)
         {
             var sourceZipStem = PathHelpers.SanitizeModStem(Path.GetFileName(hit.SourceZipPath ?? "source"));
