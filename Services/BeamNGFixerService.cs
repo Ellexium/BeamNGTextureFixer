@@ -509,6 +509,11 @@ namespace BeamNGTextureFixer.Services
             return (refs, infoLookup.Values.ToList());
         }
 
+        private static readonly HashSet<string> TextureAssetExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".dds", ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".webp"
+        };
+
         private ZipIndexService BuildSearchIndexes(string folder, CancellationToken token)
         {
             var index = new ZipIndexService();
@@ -518,6 +523,7 @@ namespace BeamNGTextureFixer.Services
                 try
                 {
                     using var archive = ZipFile.OpenRead(zipPath);
+
                     foreach (var entry in archive.Entries)
                     {
                         token.ThrowIfCancellationRequested();
@@ -526,9 +532,15 @@ namespace BeamNGTextureFixer.Services
                             continue;
 
                         var internalPath = PathHelpers.NormalizePath(entry.FullName);
+                        var ext = Path.GetExtension(internalPath);
+
+                        // only index real texture assets
+                        if (!TextureAssetExtensions.Contains(ext))
+                            continue;
+
                         Add(index.Exact, internalPath.ToLowerInvariant(), (zipPath, internalPath));
                         Add(index.ByBase, PathHelpers.Basename(internalPath).ToLowerInvariant(), (zipPath, internalPath));
-                        Add(index.ByNormName, PathHelpers.NormalizeNameOnly2(internalPath), (zipPath, internalPath));
+                        Add(index.ByNormName, PathHelpers.NormalizeNameOnly(internalPath), (zipPath, internalPath));
                         Add(index.SamePathOtherExt, Path.ChangeExtension(internalPath, null)?.TrimEnd('.').ToLowerInvariant() ?? string.Empty, (zipPath, internalPath));
                     }
                 }
@@ -552,7 +564,11 @@ namespace BeamNGTextureFixer.Services
 
 
 
-        private SearchHit? FindInCurrent(TextureRef reference, ZipIndexService? currentIndexes)
+        private SearchHit? FindInCurrent(
+    TextureRef reference,
+    ZipIndexService? currentIndexes,
+    bool useNormalizedCurrentContentFixes,
+    bool useSameBasenameCurrentContentFixes)
         {
             if (currentIndexes is null)
                 return null;
@@ -560,9 +576,10 @@ namespace BeamNGTextureFixer.Services
             var wantedLower = reference.NormalizedValue.ToLowerInvariant();
             var stem = Path.ChangeExtension(wantedLower, null)?.TrimEnd('.') ?? string.Empty;
             var b = PathHelpers.Basename(wantedLower).ToLowerInvariant();
-            var n = PathHelpers.NormalizeNameOnly2(wantedLower);
+            var n = PathHelpers.NormalizeNameOnly(wantedLower);
             var baseName = PathHelpers.GetBaseName(n);
 
+            // Always allow strongest current matches
             if (currentIndexes.Exact.TryGetValue(wantedLower, out var exact))
             {
                 return new SearchHit
@@ -585,18 +602,9 @@ namespace BeamNGTextureFixer.Services
                 };
             }
 
-            if (currentIndexes.ByBase.TryGetValue(b, out var byBase))
-            {
-                return new SearchHit
-                {
-                    Status = "current_content",
-                    MatchType = "current_same_basename",
-                    SourceZipPath = byBase[0].ZipPath,
-                    InternalPath = byBase[0].InternalPath
-                };
-            }
-
-            if (currentIndexes.ByNormName.TryGetValue(n, out var byNorm))
+            // Only allow normalized current matching when checkbox is enabled
+            if (useNormalizedCurrentContentFixes &&
+                currentIndexes.ByNormName.TryGetValue(n, out var byNorm))
             {
                 return new SearchHit
                 {
@@ -607,40 +615,58 @@ namespace BeamNGTextureFixer.Services
                 };
             }
 
-            // broader semantic-family fallback:
-            // fullsizeglass_s -> fullsizeglass
-            if (!string.IsNullOrWhiteSpace(baseName))
+            // Only allow basename/current family matching when highly experimental checkbox is enabled
+            if (useSameBasenameCurrentContentFixes)
             {
-                var familyMatch = currentIndexes.ByNormName
-                    .FirstOrDefault(kv =>
-                        string.Equals(PathHelpers.GetBaseName(kv.Key), baseName, StringComparison.OrdinalIgnoreCase));
-
-                if (!string.IsNullOrWhiteSpace(familyMatch.Key) &&
-                    familyMatch.Value is not null &&
-                    familyMatch.Value.Count > 0)
+                if (currentIndexes.ByBase.TryGetValue(b, out var byBase))
                 {
                     return new SearchHit
                     {
                         Status = "current_content",
-                        MatchType = "current_base_name",
-                        SourceZipPath = familyMatch.Value[0].ZipPath,
-                        InternalPath = familyMatch.Value[0].InternalPath
+                        MatchType = "current_same_basename",
+                        SourceZipPath = byBase[0].ZipPath,
+                        InternalPath = byBase[0].InternalPath
                     };
+                }
+
+                if (!string.IsNullOrWhiteSpace(baseName))
+                {
+                    var familyMatch = currentIndexes.ByNormName
+                        .FirstOrDefault(kv =>
+                            string.Equals(PathHelpers.GetBaseName(kv.Key), baseName, StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrWhiteSpace(familyMatch.Key) &&
+                        familyMatch.Value is not null &&
+                        familyMatch.Value.Count > 0)
+                    {
+                        return new SearchHit
+                        {
+                            Status = "current_content",
+                            MatchType = "current_base_name",
+                            SourceZipPath = familyMatch.Value[0].ZipPath,
+                            InternalPath = familyMatch.Value[0].InternalPath
+                        };
+                    }
                 }
             }
 
             return null;
         }
 
-        private SearchHit FindInOld(TextureRef reference, ZipIndexService oldIndexes)
+        private SearchHit FindInOld(
+            TextureRef reference,
+            ZipIndexService oldIndexes,
+            bool useSameBasenameCurrentContentFixes)
         {
             var wantedLower = reference.NormalizedValue.ToLowerInvariant();
             var stem = Path.ChangeExtension(wantedLower, null)?.TrimEnd('.') ?? string.Empty;
             var b = PathHelpers.Basename(wantedLower).ToLowerInvariant();
-            var n = PathHelpers.NormalizeNameOnly2(wantedLower);
+            var n = PathHelpers.NormalizeNameOnly(wantedLower);
             var baseName = PathHelpers.GetBaseName(n);
 
+            // Always allow strongest old-content matches
             if (oldIndexes.Exact.TryGetValue(wantedLower, out var exact))
+            {
                 return new SearchHit
                 {
                     Status = "resolved_from_old",
@@ -648,8 +674,10 @@ namespace BeamNGTextureFixer.Services
                     SourceZipPath = exact[0].ZipPath,
                     InternalPath = exact[0].InternalPath
                 };
+            }
 
             if (oldIndexes.SamePathOtherExt.TryGetValue(stem, out var sameExt))
+            {
                 return new SearchHit
                 {
                     Status = "resolved_from_old",
@@ -657,17 +685,11 @@ namespace BeamNGTextureFixer.Services
                     SourceZipPath = sameExt[0].ZipPath,
                     InternalPath = sameExt[0].InternalPath
                 };
+            }
 
-            if (oldIndexes.ByBase.TryGetValue(b, out var byBase))
-                return new SearchHit
-                {
-                    Status = "resolved_from_old",
-                    MatchType = "same_basename",
-                    SourceZipPath = byBase[0].ZipPath,
-                    InternalPath = byBase[0].InternalPath
-                };
-
+            // Keep normalized old-content matching on by default
             if (oldIndexes.ByNormName.TryGetValue(n, out var byNorm))
+            {
                 return new SearchHit
                 {
                     Status = "resolved_from_old",
@@ -675,24 +697,40 @@ namespace BeamNGTextureFixer.Services
                     SourceZipPath = byNorm[0].ZipPath,
                     InternalPath = byNorm[0].InternalPath
                 };
+            }
 
-            if (!string.IsNullOrWhiteSpace(baseName))
+            // Only allow weaker location/name-family old-content matches when highly experimental is enabled
+            if (useSameBasenameCurrentContentFixes)
             {
-                var familyMatch = oldIndexes.ByNormName
-                    .FirstOrDefault(kv =>
-                        string.Equals(PathHelpers.GetBaseName(kv.Key), baseName, StringComparison.OrdinalIgnoreCase));
-
-                if (!string.IsNullOrWhiteSpace(familyMatch.Key) &&
-                    familyMatch.Value is not null &&
-                    familyMatch.Value.Count > 0)
+                if (oldIndexes.ByBase.TryGetValue(b, out var byBase))
                 {
                     return new SearchHit
                     {
                         Status = "resolved_from_old",
-                        MatchType = "base_name",
-                        SourceZipPath = familyMatch.Value[0].ZipPath,
-                        InternalPath = familyMatch.Value[0].InternalPath
+                        MatchType = "same_basename",
+                        SourceZipPath = byBase[0].ZipPath,
+                        InternalPath = byBase[0].InternalPath
                     };
+                }
+
+                if (!string.IsNullOrWhiteSpace(baseName))
+                {
+                    var familyMatch = oldIndexes.ByNormName
+                        .FirstOrDefault(kv =>
+                            string.Equals(PathHelpers.GetBaseName(kv.Key), baseName, StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrWhiteSpace(familyMatch.Key) &&
+                        familyMatch.Value is not null &&
+                        familyMatch.Value.Count > 0)
+                    {
+                        return new SearchHit
+                        {
+                            Status = "resolved_from_old",
+                            MatchType = "base_name",
+                            SourceZipPath = familyMatch.Value[0].ZipPath,
+                            InternalPath = familyMatch.Value[0].InternalPath
+                        };
+                    }
                 }
             }
 
@@ -710,6 +748,8 @@ namespace BeamNGTextureFixer.Services
             string oldFolder,
             string? currentFolder = null,
             bool preferOldContentRecovery = false,
+            bool useNormalizedCurrentContentFixes = false,
+            bool useSameBasenameCurrentContentFixes = false,
             CancellationToken token = default,
             Action<int, int, string>? progressCallback = null)
         {
@@ -752,7 +792,10 @@ namespace BeamNGTextureFixer.Services
                     if (preferOldContentRecovery)
                     {
                         // OLD FIRST
-                        var oldHit = FindInOld(reference, oldIndexes);
+                        var oldHit = FindInOld(
+                            reference,
+                            oldIndexes,
+                            useSameBasenameCurrentContentFixes);
 
                         if (oldHit.Status == "resolved_from_old")
                         {
@@ -761,7 +804,11 @@ namespace BeamNGTextureFixer.Services
                         }
                         else
                         {
-                            var currentHit = FindInCurrent(reference, currentIndexes);
+                            var currentHit = FindInCurrent(
+                                reference,
+                                currentIndexes,
+                                useNormalizedCurrentContentFixes,
+                                useSameBasenameCurrentContentFixes);
 
                             if (currentHit is not null)
                             {
@@ -777,8 +824,12 @@ namespace BeamNGTextureFixer.Services
                     }
                     else
                     {
-                        // CURRENT FIRST (existing behavior)
-                        var currentHit = FindInCurrent(reference, currentIndexes);
+                        // CURRENT FIRST (balanced/default behavior)
+                        var currentHit = FindInCurrent(
+                            reference,
+                            currentIndexes,
+                            useNormalizedCurrentContentFixes,
+                            useSameBasenameCurrentContentFixes);
 
                         if (currentHit is not null)
                         {
@@ -787,12 +838,21 @@ namespace BeamNGTextureFixer.Services
                         }
                         else
                         {
-                            hit = FindInOld(reference, oldIndexes);
+                            var oldHit = FindInOld(
+                                reference,
+                                oldIndexes,
+                                useSameBasenameCurrentContentFixes);
 
-                            if (hit.Status == "resolved_from_old")
+                            if (oldHit.Status == "resolved_from_old")
+                            {
+                                hit = oldHit;
                                 resolvedFromOld++;
+                            }
                             else
+                            {
+                                hit = oldHit; // unresolved
                                 unresolved++;
+                            }
                         }
                     }
                 }
