@@ -807,8 +807,6 @@ namespace BeamNGTextureFixer.ViewModels
                                 OldContentFolder,
                                 string.IsNullOrWhiteSpace(CurrentContentFolder) ? null : CurrentContentFolder,
                                 PreferOldContentRecovery,
-                                UseNormalizedCurrentContentFixes,
-                                UseSameBasenameCurrentContentFixes,
                                 token,
                                 (doneInThisMod, totalInThisMod, message) =>
                                 {

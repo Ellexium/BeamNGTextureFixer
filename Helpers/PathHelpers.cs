@@ -71,8 +71,7 @@ namespace BeamNGTextureFixer.Helpers
             return $"{stem}{ext}";
         }
 
-        //    public static string
-        //    (string? p)
+        //    public static string NormalizeNameOnly2(string? p)
         //    {
         //        var name = Path.GetFileName(NormalizePath(p));
         //        var stem = Path.GetFileNameWithoutExtension(name).ToLowerInvariant();
