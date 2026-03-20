@@ -71,112 +71,6 @@ namespace BeamNGTextureFixer.Helpers
             return $"{stem}{ext}";
         }
 
-        //    public static string NormalizeNameOnly2(string? p)
-        //    {
-        //        var name = Path.GetFileName(NormalizePath(p));
-        //        var stem = Path.GetFileNameWithoutExtension(name).ToLowerInvariant();
-
-        //        // Normalize separators
-        //        stem = stem.Replace('\\', '_')
-        //                   .Replace('/', '_')
-        //                   .Replace('-', '_')
-        //                   .Replace(' ', '_');
-
-        //        // Remove inserted descriptors
-        //        stem = stem.Replace(".color", "")
-        //                   .Replace(".normal", "")
-        //                   .Replace(".data", "")
-        //                   .Replace(".specular", "")
-        //                   .Replace(".roughness", "")
-        //                   .Replace(".metallic", "")
-        //                   .Replace(".opacity", "")
-        //                   .Replace(".alpha", "")
-        //                   .Replace(".ao", "")
-        //                   .Replace(".occlusion", "");
-
-        //        stem = Regex.Replace(stem, @"[^a-z0-9_]+", "_");
-        //        stem = Regex.Replace(stem, @"__+", "_").Trim('_');
-
-        //        // Canonical suffix mapping
-        //        var aliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        //        {
-        //            ["_nm"] = "_n",
-        //            ["_normal"] = "_n",
-        //            ["_normals"] = "_n",
-
-        //            ["_diffuse"] = "_d",
-        //            ["_albedo"] = "_d",
-        //            ["_basecolor"] = "_d",
-        //            ["_base_color"] = "_d",
-        //            ["_color"] = "_d",
-        //            ["_col"] = "_d",
-
-        //            ["_spec"] = "_s",
-        //            ["_specular"] = "_s",
-
-        //            ["_rough"] = "_r",
-        //            ["_roughness"] = "_r",
-
-        //            ["_metal"] = "_m",
-        //            ["_metallic"] = "_m",
-
-        //            ["_occlusion"] = "_ao",
-        //            ["_ambientocclusion"] = "_ao",
-        //            ["_ambient_occlusion"] = "_ao",
-
-        //            ["_opacity"] = "_o",
-        //            ["_alpha"] = "_o",
-        //        };
-
-        //        bool changed;
-        //        do
-        //        {
-        //            changed = false;
-
-        //            foreach (var kv in aliasMap.OrderByDescending(x => x.Key.Length))
-        //            {
-        //                if (stem.EndsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
-        //                {
-        //                    stem = stem[..^kv.Key.Length] + kv.Value;
-        //                    changed = true;
-        //                    break;
-        //                }
-        //            }
-
-        //            stem = Regex.Replace(stem, @"__+", "_").Trim('_');
-        //        }
-        //        while (changed);
-
-        //        // --- FUZZY LAYER STARTS HERE ---
-
-        //        // Extract semantic role (_d, _n, etc.)
-        //        string role = "";
-        //        if (stem.EndsWith("_ao"))
-        //        {
-        //            role = "_ao";
-        //            stem = stem[..^3];
-        //        }
-        //        else if (stem.Length > 2 && stem[^2] == '_')
-        //        {
-        //            role = stem[^2..];
-        //            stem = stem[..^2];
-        //        }
-
-        //        // Remove digits (ibishurx3 -> ibishurx)
-        //        stem = Regex.Replace(stem, @"\d+", "");
-
-        //        // Remove single-letter segments like _a_ or _b_
-        //        stem = Regex.Replace(stem, @"(?<=_)[a-z](?=_)", "");
-
-        //        // Remove underscores entirely for broader matching
-        //        stem = stem.Replace("_", "");
-
-        //        // Final cleanup
-        //        stem = Regex.Replace(stem, @"[^a-z0-9]+", "");
-
-        //        return $"{stem}{role}";
-        //    }
-
         public static string NormalizeNameOnly2(string? p)
         {
             var name = Path.GetFileName(NormalizePath(p));
@@ -216,7 +110,6 @@ namespace BeamNGTextureFixer.Helpers
                 ["_base_color"] = "_d",
                 ["_color"] = "_d",
                 ["_col"] = "_d",
-                ["_b"] = "_d",
 
                 ["_spec"] = "_s",
                 ["_specular"] = "_s",
@@ -254,9 +147,11 @@ namespace BeamNGTextureFixer.Helpers
             }
             while (changed);
 
-            // Extract semantic role
+            // --- FUZZY LAYER STARTS HERE ---
+
+            // Extract semantic role (_d, _n, etc.)
             string role = "";
-            if (stem.EndsWith("_ao", StringComparison.OrdinalIgnoreCase))
+            if (stem.EndsWith("_ao"))
             {
                 role = "_ao";
                 stem = stem[..^3];
@@ -267,44 +162,20 @@ namespace BeamNGTextureFixer.Helpers
                 stem = stem[..^2];
             }
 
-            // Remove digits for broader family matching
+            // Remove digits (ibishurx3 -> ibishurx)
             stem = Regex.Replace(stem, @"\d+", "");
 
-            // Remove tiny separator fragments
+            // Remove single-letter segments like _a_ or _b_
             stem = Regex.Replace(stem, @"(?<=_)[a-z](?=_)", "");
 
-            // Remove underscores for broad family identity
+            // Remove underscores entirely for broader matching
             stem = stem.Replace("_", "");
 
             // Final cleanup
             stem = Regex.Replace(stem, @"[^a-z0-9]+", "");
 
-            // Broad semantic collapse for "surface-data" families.
-            // This is the important part for glass-style packed textures.
-            string collapsedRole = role switch
-            {
-                "_m" => "_surf",
-                "_r" => "_surf",
-                "_o" => "_surf",
-                "_s" => "_surf",
-                _ => role
-            };
-
-            return $"{stem}{collapsedRole}";
+            return $"{stem}{role}";
         }
 
-        public static string GetBaseName(string normalized)
-        {
-            if (string.IsNullOrWhiteSpace(normalized))
-                return string.Empty;
-
-            if (normalized.EndsWith("_ao"))
-                return normalized[..^3];
-
-            if (normalized.Length > 2 && normalized[^2] == '_')
-                return normalized[..^2];
-
-            return normalized;
-        }
     }
 }

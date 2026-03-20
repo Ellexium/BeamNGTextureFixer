@@ -698,38 +698,6 @@ namespace BeamNGTextureFixer.ViewModels
             }
         }
 
-        private bool ShouldPreviewRewrite(TextureRef reference, SearchHit hit)
-        {
-            bool isCsMaterial =
-                string.Equals(reference.ExtractionMode, "cs", StringComparison.OrdinalIgnoreCase);
-
-            bool isSpecular =
-                string.Equals(reference.Key, "specularMap", StringComparison.OrdinalIgnoreCase);
-
-            bool isFallbackMatch =
-                string.Equals(hit.MatchType, "normalized_name", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(hit.MatchType, "same_basename", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(hit.MatchType, "base_name", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(hit.MatchType, "current_base_name", StringComparison.OrdinalIgnoreCase);
-
-            if (isCsMaterial && isSpecular && isFallbackMatch)
-                return false;
-
-            if (string.Equals(hit.Status, "resolved_from_old", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (string.Equals(hit.MatchType, "current_normalized_name", StringComparison.OrdinalIgnoreCase))
-                return UseNormalizedCurrentContentFixes;
-
-            if (string.Equals(hit.MatchType, "current_same_basename", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(hit.MatchType, "current_base_name", StringComparison.OrdinalIgnoreCase))
-                return UseSameBasenameCurrentContentFixes;
-
-            return false;
-        }
-
         private async void ScanMods()
         {
             if (SelectedMods.Count == 0)
@@ -852,7 +820,7 @@ namespace BeamNGTextureFixer.ViewModels
 
                                 var newPath = "";
 
-                                if (ShouldPreviewRewrite(pair.Ref, pair.Hit) &&
+                                if (ShouldPreviewExperimentalRewrite(pair.Ref, pair.Hit) &&
                                     !string.IsNullOrWhiteSpace(pair.Hit.SourceZipPath) &&
                                     !string.IsNullOrWhiteSpace(pair.Hit.InternalPath))
                                 {
