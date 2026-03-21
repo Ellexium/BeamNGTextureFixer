@@ -107,7 +107,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="220"/>
+                        <ColumnDefinition Width="180"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="120"/>
                     </Grid.ColumnDefinitions>
@@ -209,54 +209,64 @@
                             Content="Clear"
                             Command="{Binding ClearModsCommand}" />
 
-                    <StackPanel Grid.Row="3"
-                                    Grid.Column="0"
-                                    Grid.ColumnSpan="3"
-                                    Orientation="Horizontal"
-                                    Margin="0,18,0,0">
-                        <Button Content="Scan Mod(s)"
+                    <Grid Grid.Row="3"
+                          Grid.Column="0"
+                          Grid.ColumnSpan="3"
+                          Margin="0,18,0,0">
+
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <WrapPanel Grid.Row="0"
+                                    Orientation="Horizontal">
+
+                            <Button Content="Scan Mod(s)"
                                     Width="99"
                                     Height="36"
-                                    Margin="0,0,10,0"
+                                    Margin="0,0,10,10"
                                     Command="{Binding ScanCommand}" />
 
-                        <Button Content="Build Fixed Mod(s)"
+                            <Button Content="Build Fixed Mod(s)"
                                     Width="120"
                                     Height="36"
-                                    Margin="0,0,10,0"
+                                    Margin="0,0,10,10"
                                     Command="{Binding BuildCommand}" />
 
-                        <Button Content="Do Extra Passes (May fix more textures)"
+                            <Button Content="Do Extra Passes (May fix more textures)"
                                     Width="240"
                                     Height="36"
-                                    Margin="0,0,10,0"
+                                    Margin="0,0,10,10"
                                     Command="{Binding AggressivePassCommand}" />
+                        </WrapPanel>
 
-                        <CheckBox Content="Replace original mod"
-                                  IsChecked="{Binding ReplaceOriginalMod}"
-                                  Foreground="White"
-                                  Height="16"
-                                  Margin="10,0,10,0"/>
-                        
-                        <CheckBox Content="Guess new current additional texture names"
-                                  IsChecked="{Binding UseNormalizedCurrentContentFixes}"
-                                  Foreground="White"
-                                  Height="16"
-                                  Margin="10,0,10,0"/>
+                        <WrapPanel Grid.Row="1"
+                                    Orientation="Horizontal" Margin="0,5,0,-5">
+                            <CheckBox Content="Replace original mod"
+                                      IsChecked="{Binding ReplaceOriginalMod}"
+                                      Foreground="White"
+                                      Margin="0,0,18,8"/>
 
-                        <CheckBox Content="Use same texture names from different locations"
-                                  IsChecked="{Binding UseSameBasenameCurrentContentFixes}"
-                                  Foreground="White"
-                                  Height="16"
-                                  Margin="10,0,10,0"/>
-                        
-                        <CheckBox Content="Prioritize Fixing with Old Textures"
-                                  IsChecked="{Binding PreferOldContentRecovery}"
-                                  Foreground="White"
-                                  Height="16"
-                                  Margin="10,0,10,0"/>
-                        
-                    </StackPanel>
+                            <CheckBox Content="Guess new current additional texture names"
+                                      IsChecked="{Binding UseNormalizedCurrentContentFixes}"
+                                      Foreground="White"
+                                      Margin="0,0,18,8"/>
+
+                            <CheckBox Content="Use same texture names from different locations"
+                                      IsChecked="{Binding UseSameBasenameCurrentContentFixes}"
+                                      Foreground="White"
+                                      Margin="0,0,18,8"/>
+
+                            <CheckBox Content="Prioritize Fixing with Old Textures"
+                                      IsChecked="{Binding PreferOldContentRecovery}"
+                                      Foreground="White"
+                                      Margin="0,0,18,8"/>
+                        </WrapPanel>
+                    </Grid>
+
                 </Grid>
             </Border>
 
