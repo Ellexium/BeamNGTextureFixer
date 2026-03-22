@@ -435,7 +435,12 @@ namespace BeamNGTextureFixer.Services
 
             if (internalPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
             {
-                foreach (var def in ExtractJsonDefinitions(spec, internalPath, rawText))
+                var defs = ExtractJsonDefinitions(spec, internalPath, rawText).ToList();
+
+                if (defs.Count == 0)
+                    defs = ExtractJsonDefinitionsFromTextFallback(spec, internalPath, rawText).ToList();
+
+                foreach (var def in defs)
                     AddDefinition(result, def);
 
                 return;
@@ -443,6 +448,99 @@ namespace BeamNGTextureFixer.Services
 
             foreach (var def in ExtractCsDefinitions(spec, internalPath, rawText))
                 AddDefinition(result, def);
+        }
+
+        private IEnumerable<MaterialDefinitionRecord> ExtractJsonDefinitionsFromTextFallback(
+            MaterialScanSource spec,
+            string internalPath,
+            string rawText)
+        {
+            // Top-level-ish: "materialName": { ... }
+            var blockPattern = new Regex(
+                "\"(?<name>[^\"]+)\"\\s*:\\s*\\{(?<body>(?>[^{}\"]+|\"(?:\\\\.|[^\"])*\"|\\{(?<DEPTH>)|\\}(?<-DEPTH>))*)(?(DEPTH)(?!))\\}",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            foreach (Match blockMatch in blockPattern.Matches(rawText))
+            {
+                var materialName = blockMatch.Groups["name"].Value.Trim();
+                var body = blockMatch.Groups["body"].Value;
+
+                if (string.IsNullOrWhiteSpace(materialName))
+                    continue;
+
+                var def = new MaterialDefinitionRecord
+                {
+                    MaterialName = materialName,
+                    SourcePath = internalPath,
+                    SourceArchivePath = spec.ArchivePath,
+                    SourceKind = "json_text_fallback",
+                    Origin = spec.Origin
+                };
+
+                foreach (var textureRef in ExtractJsonTextureRefsFromRawText(internalPath, materialName, body))
+                    def.TextureRefs.Add(textureRef);
+
+                // only keep blocks that actually look like material defs
+                if (def.TextureRefs.Count > 0)
+                    yield return def;
+            }
+        }
+
+        private IEnumerable<TextureRef> ExtractJsonTextureRefsFromRawText(
+            string materialFile,
+            string materialName,
+            string rawText)
+        {
+            var keyPattern = string.Join("|", TextureKeys.OrderByDescending(x => x.Length).Select(Regex.Escape));
+
+            // staged keys
+            var stagePattern = new Regex(
+                "\"(?<key>" + keyPattern + ")\"\\s*:\\s*\"(?<value>[^\"]+)\"",
+                RegexOptions.IgnoreCase);
+
+            int stageIndex = 0;
+
+            foreach (Match match in stagePattern.Matches(rawText))
+            {
+                var key = match.Groups["key"].Value;
+                var value = match.Groups["value"].Value;
+
+                if (!ShouldKeepTextureValue(value))
+                    continue;
+
+                yield return new TextureRef
+                {
+                    MaterialFile = materialFile,
+                    MaterialName = materialName,
+                    StageIndex = stageIndex,
+                    Key = key,
+                    OriginalValue = value,
+                    NormalizedValue = NormalizeDefinitionTexturePath(materialFile, value),
+                    ExtractionMode = "json_text_fallback"
+                };
+
+                stageIndex++;
+            }
+        }
+
+        private static string NormalizeDefinitionTexturePath(string materialFile, string value)
+        {
+            var normalizedValue = PathHelpers.NormalizePath(value);
+
+            bool hasPath =
+                normalizedValue.Contains('/') ||
+                normalizedValue.Contains('\\');
+
+            if (!hasPath)
+            {
+                var materialFolder = Path.GetDirectoryName(PathHelpers.NormalizePath(materialFile)) ?? string.Empty;
+                materialFolder = PathHelpers.NormalizePath(materialFolder);
+
+                if (!string.IsNullOrWhiteSpace(materialFolder))
+                    normalizedValue = PathHelpers.NormalizePath($"{materialFolder}/{normalizedValue}");
+            }
+
+            return normalizedValue;
         }
 
         private void ScanReferenceText(

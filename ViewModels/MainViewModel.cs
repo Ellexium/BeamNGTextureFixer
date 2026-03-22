@@ -1044,9 +1044,9 @@ namespace BeamNGTextureFixer.ViewModels
             _generatedResultsByTargetZip.TryGetValue(targetZip, out var generatedResult);
 
             var issueRows = materialFinderResult.Issues
-                //.Where(x =>
-                //    !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
-                //    !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
+                .Where(x =>
+                    !string.Equals(x.IssueType, "defined_but_unreferenced", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(x.IssueType, "defined_but_unreferenced_and_broken", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(x => x.MaterialName, StringComparer.OrdinalIgnoreCase)
                 .Select(issue =>
                 {
