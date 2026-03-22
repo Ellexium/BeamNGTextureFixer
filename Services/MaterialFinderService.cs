@@ -778,27 +778,34 @@ namespace BeamNGTextureFixer.Services
             string internalPath,
             string rawText)
         {
-            JsonDocument doc;
+            List<MaterialReferenceRecord>? results = null;
 
             try
             {
-                doc = JsonDocument.Parse(rawText);
+                using var doc = JsonDocument.Parse(rawText);
+
+                results = ExtractJsonLikeReferencesFromElement(
+                    spec,
+                    internalPath,
+                    doc.RootElement
+                ).ToList();
             }
             catch (JsonException)
             {
+                // fallback later
+            }
+
+            if (results != null && results.Count > 0)
+            {
+                foreach (var r in results)
+                    yield return r;
+
                 yield break;
             }
 
-            using (doc)
-            {
-                foreach (var reference in ExtractJsonLikeReferencesFromElement(
-                             spec,
-                             internalPath,
-                             doc.RootElement))
-                {
-                    yield return reference;
-                }
-            }
+            // 🔁 fallback to text
+            foreach (var r in ExtractJsonLikeReferencesFromTextFallback(spec, internalPath, rawText))
+                yield return r;
         }
 
         private IEnumerable<MaterialReferenceRecord> ExtractJsonLikeReferencesFromElement(
@@ -875,6 +882,73 @@ namespace BeamNGTextureFixer.Services
                 {
                     foreach (var nested in ExtractJsonLikeReferencesFromElement(spec, internalPath, item))
                         yield return nested;
+                }
+            }
+        }
+
+        private IEnumerable<MaterialReferenceRecord> ExtractJsonLikeReferencesFromTextFallback(
+            MaterialScanSource spec,
+            string internalPath,
+            string rawText)
+        {
+            var singlePattern = new Regex(
+                "\"(?<key>[^\"]*materials?)\"\\s*:\\s*\"(?<value>[^\"]+)\"",
+                RegexOptions.IgnoreCase);
+
+            foreach (Match match in singlePattern.Matches(rawText))
+            {
+                var key = match.Groups["key"].Value.Trim();
+                var materialName = match.Groups["value"].Value.Trim();
+
+                if (!key.EndsWith("material", StringComparison.OrdinalIgnoreCase) &&
+                    !key.EndsWith("materials", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!LooksLikeMaterialName(materialName))
+                    continue;
+
+                yield return new MaterialReferenceRecord
+                {
+                    MaterialName = materialName,
+                    ReferencedByFile = internalPath,
+                    ReferencedByArchivePath = spec.ArchivePath,
+                    PropertyName = key,
+                    Origin = spec.Origin,
+                    Evidence = match.Value
+                };
+            }
+
+            var arrayPattern = new Regex(
+                "\"(?<key>[^\"]*materials?)\"\\s*:\\s*\\[(?<items>.*?)\\]",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            foreach (Match match in arrayPattern.Matches(rawText))
+            {
+                var key = match.Groups["key"].Value.Trim();
+                var items = match.Groups["items"].Value;
+
+                if (!key.EndsWith("material", StringComparison.OrdinalIgnoreCase) &&
+                    !key.EndsWith("materials", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var valuePattern = new Regex("\"(?<value>[^\"]+)\"", RegexOptions.IgnoreCase);
+
+                foreach (Match valueMatch in valuePattern.Matches(items))
+                {
+                    var materialName = valueMatch.Groups["value"].Value.Trim();
+
+                    if (!LooksLikeMaterialName(materialName))
+                        continue;
+
+                    yield return new MaterialReferenceRecord
+                    {
+                        MaterialName = materialName,
+                        ReferencedByFile = internalPath,
+                        ReferencedByArchivePath = spec.ArchivePath,
+                        PropertyName = key,
+                        Origin = spec.Origin,
+                        Evidence = valueMatch.Value
+                    };
                 }
             }
         }
