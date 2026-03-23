@@ -18,18 +18,83 @@ using Forms = System.Windows.Forms;
 
 namespace BeamNGTextureFixer.ViewModels
 {
+    public enum BuildOutputMode
+    {
+        NewFixed,
+        ReplaceOriginal,
+        NewFixedDisabled,
+        ReplaceAndMoveOriginals
+    }
     public class MainViewModel : ViewModelBase
     {
 
         public RelayCommand ClearOldCommand { get; }
         public RelayCommand ClearCurrentCommand { get; }
         public RelayCommand ClearModsCommand { get; }
+        public RelayCommand ClearOriginalModsOutputFolderCommand { get; }
 
-        private bool _replaceOriginalMod;
-        public bool ReplaceOriginalMod
+        private BuildOutputMode _buildOutputMode = BuildOutputMode.NewFixed;
+        public BuildOutputMode BuildOutputMode
         {
-            get => _replaceOriginalMod;
-            set => SetProperty(ref _replaceOriginalMod, value);
+            get => _buildOutputMode;
+            set
+            {
+                if (SetProperty(ref _buildOutputMode, value))
+                {
+                    OnPropertyChanged(nameof(IsOutputModeNewFixed));
+                    OnPropertyChanged(nameof(IsOutputModeReplaceOriginal));
+                    OnPropertyChanged(nameof(IsOutputModeNewFixedIgnored));
+                    OnPropertyChanged(nameof(IsOutputModeReplaceAndMoveOriginals));
+                    RefreshActionButtons();
+                }
+            }
+        }
+
+        public bool IsOutputModeNewFixed
+        {
+            get => BuildOutputMode == BuildOutputMode.NewFixed;
+            set
+            {
+                if (value)
+                    BuildOutputMode = BuildOutputMode.NewFixed;
+            }
+        }
+
+        public bool IsOutputModeReplaceOriginal
+        {
+            get => BuildOutputMode == BuildOutputMode.ReplaceOriginal;
+            set
+            {
+                if (value)
+                    BuildOutputMode = BuildOutputMode.ReplaceOriginal;
+            }
+        }
+
+        public bool IsOutputModeNewFixedIgnored
+        {
+            get => BuildOutputMode == BuildOutputMode.NewFixedDisabled;
+            set
+            {
+                if (value)
+                    BuildOutputMode = BuildOutputMode.NewFixedDisabled;
+            }
+        }
+
+        public bool IsOutputModeReplaceAndMoveOriginals
+        {
+            get => BuildOutputMode == BuildOutputMode.ReplaceAndMoveOriginals;
+            set
+            {
+                if (value)
+                    BuildOutputMode = BuildOutputMode.ReplaceAndMoveOriginals;
+            }
+        }
+
+        private string _originalModsOutputFolder = string.Empty;
+        public string OriginalModsOutputFolder
+        {
+            get => _originalModsOutputFolder;
+            set => SetProperty(ref _originalModsOutputFolder, value);
         }
         private static int CountMaterialFilesInZip(string zipPath, CancellationToken token)
         {
@@ -318,9 +383,114 @@ namespace BeamNGTextureFixer.ViewModels
             ExportMaterialReportCommand = new RelayCommand(ExportMaterialReport);
             ExportThirdPassReportCommand = new RelayCommand(ExportThirdPassReport);
 
+            ClearOriginalModsOutputFolderCommand = new RelayCommand(ClearOriginalModsOutputFolder);
+
             // ExportTextureReportCommand = new RelayCommand(ExportTextureReport, () => SelectedBatchResult is not null && DetailRows.Count > 0);
         }
 
+        private bool OutputModeReplacesOriginal()
+        {
+            return BuildOutputMode == BuildOutputMode.ReplaceOriginal
+                || BuildOutputMode == BuildOutputMode.ReplaceAndMoveOriginals;
+        }
+
+        private string BuildOutputPathForRow(BatchResultRow row)
+        {
+            var folder = Path.GetDirectoryName(row.ModZip) ?? "";
+            var nameWithoutExt = Path.GetFileNameWithoutExtension(row.ModZip);
+
+            return BuildOutputMode switch
+            {
+                BuildOutputMode.ReplaceOriginal => row.ModZip,
+                BuildOutputMode.ReplaceAndMoveOriginals => row.ModZip,
+                BuildOutputMode.NewFixed => Path.Combine(folder, nameWithoutExt + "_fixed.zip"),
+                BuildOutputMode.NewFixedDisabled => Path.Combine(folder, nameWithoutExt + "_fixed.zip"),
+                _ => Path.Combine(folder, nameWithoutExt + "_fixed.zip")
+            };
+        }
+
+        private bool ValidateReplaceAndMoveOriginalsMode(out string error)
+        {
+            error = "";
+
+            if (BuildOutputMode != BuildOutputMode.ReplaceAndMoveOriginals)
+                return true;
+
+            if (string.IsNullOrWhiteSpace(OriginalModsOutputFolder) || !Directory.Exists(OriginalModsOutputFolder))
+            {
+                error = "Choose a valid custom folder for the original zip(s).";
+                return false;
+            }
+
+            var outputFull = Path.GetFullPath(OriginalModsOutputFolder);
+
+            foreach (var modZip in SelectedMods)
+            {
+                var originalFolder = Path.GetDirectoryName(Path.GetFullPath(modZip)) ?? "";
+                if (string.Equals(originalFolder, outputFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "The custom folder for original zip(s) cannot be the same folder the mod already comes from.";
+                    return false;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(CurrentContentFolder))
+            {
+                var currentFull = Path.GetFullPath(CurrentContentFolder);
+                if (outputFull.StartsWith(currentFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "The custom folder for original zip(s) cannot be inside the current BeamNG content folder.";
+                    return false;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(OldContentFolder))
+            {
+                var oldFull = Path.GetFullPath(OldContentFolder);
+                if (outputFull.StartsWith(oldFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    error = "The custom folder for original zip(s) cannot be inside the old BeamNG content folder.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void MoveOriginalZipToCustomFolder(string originalZipPath)
+        {
+            if (BuildOutputMode != BuildOutputMode.ReplaceAndMoveOriginals)
+                return;
+
+            var destinationFolder = OriginalModsOutputFolder;
+            Directory.CreateDirectory(destinationFolder);
+
+            var destinationPath = Path.Combine(destinationFolder, Path.GetFileName(originalZipPath));
+
+            if (string.Equals(
+                Path.GetFullPath(destinationPath),
+                Path.GetFullPath(originalZipPath),
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Original zip destination cannot be the same file path as the source.");
+            }
+
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+
+            File.Move(originalZipPath, destinationPath);
+        }
+        private void ClearOriginalModsOutputFolder()
+        {
+            OriginalModsOutputFolder = string.Empty;
+        }
+
+        public void BrowseOriginalModsOutputFolder()
+        {
+            using var dialog = new Forms.FolderBrowserDialog();
+            if (dialog.ShowDialog() == Forms.DialogResult.OK)
+                OriginalModsOutputFolder = dialog.SelectedPath;
+        }
 
         private bool CanScan()
         {
@@ -1018,7 +1188,7 @@ namespace BeamNGTextureFixer.ViewModels
 
         private string GetTargetZipForRow(BatchResultRow row)
         {
-            return ReplaceOriginalMod ? row.ModZip : row.OutZip;
+            return OutputModeReplacesOriginal() ? row.ModZip : row.OutZip;
         }
 
         private void BindThirdPass(BatchResultRow? batchRow)
@@ -1282,10 +1452,20 @@ namespace BeamNGTextureFixer.ViewModels
                 return;
             }
 
-            if (ReplaceOriginalMod)
+            if (!ValidateReplaceAndMoveOriginalsMode(out var outputModeError))
             {
+                MessageBox.Show(outputModeError, "Build Output");
+                return;
+            }
+
+            if (OutputModeReplacesOriginal())
+            {
+                var message = BuildOutputMode == BuildOutputMode.ReplaceAndMoveOriginals
+                    ? "This will replace the original selected mod zip file(s), then move the original zip(s) to the custom location you selected.\n\nContinue?"
+                    : "This will replace the original selected mod zip file(s) in place.\n\nContinue?";
+
                 var result = MessageBox.Show(
-                    "This will replace the original selected mod zip file(s) instead of copying the same one(s) and adding '_fixed' to name.\n\nContinue?",
+                    message,
                     "Replace Original Mod",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Warning);
@@ -1328,11 +1508,31 @@ namespace BeamNGTextureFixer.ViewModels
                         {
                             token.ThrowIfCancellationRequested();
 
-                            var outPath = ReplaceOriginalMod
-                                ? row.ModZip
-                                : Path.Combine(
-                                    Path.GetDirectoryName(row.ModZip) ?? "",
-                                    Path.GetFileNameWithoutExtension(row.ModZip) + "_fixed.zip");
+                            var outPath = BuildOutputPathForRow(row);
+
+                            string? movedOriginalPath = null;
+
+                            if (BuildOutputMode == BuildOutputMode.ReplaceAndMoveOriginals)
+                            {
+                                movedOriginalPath = Path.Combine(
+                                    OriginalModsOutputFolder,
+                                    Path.GetFileName(row.ModZip));
+
+                                if (File.Exists(movedOriginalPath))
+                                    File.Delete(movedOriginalPath);
+
+                                File.Move(row.ModZip, movedOriginalPath);
+                            }
+
+                            if (BuildOutputMode == BuildOutputMode.NewFixedDisabled)
+                            {
+                                var disabledPath = row.ModZip + ".disabled";
+
+                                if (File.Exists(disabledPath))
+                                    File.Delete(disabledPath);
+
+                                File.Move(row.ModZip, disabledPath);
+                            }
 
                             var result = row.Service.BuildFixedMod(
                                 outPath,
@@ -1457,7 +1657,7 @@ namespace BeamNGTextureFixer.ViewModels
                     {
                         token.ThrowIfCancellationRequested();
 
-                        var targetZip = ReplaceOriginalMod ? row.ModZip : row.OutZip;
+                        var targetZip = OutputModeReplacesOriginal() ? row.ModZip : row.OutZip;
 
                         if (string.IsNullOrWhiteSpace(targetZip) || !File.Exists(targetZip))
                         {
@@ -1517,7 +1717,7 @@ namespace BeamNGTextureFixer.ViewModels
                             row.AggressivePassRan = true;
                             row.AggressivePassStatus = aggressiveResult.StatusText;
 
-                            if (!ReplaceOriginalMod)
+                            if (!OutputModeReplacesOriginal())
                                 row.OutZip = targetZip;
                         }
                         catch (OperationCanceledException)

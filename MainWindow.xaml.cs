@@ -9,6 +9,15 @@ namespace BeamNGTextureFixer
     public partial class MainWindow : Window
     {
 
+        private void OriginalModsOutputFolder_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                vm.BrowseOriginalModsOutputFolder();
+                e.Handled = true;
+            }
+        }
+
         private void OldContentFolder_Click(object sender, MouseButtonEventArgs e)
         {
             if (DataContext is MainViewModel vm && vm.BrowseOldCommand.CanExecute(null))

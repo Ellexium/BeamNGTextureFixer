@@ -5,8 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="BeamNG Missing Texture Fixer"
-        Height="750"
-        Width="1280"
+        Height="802"
+        Width="1351"
         MinHeight="450"
         MinWidth="900"
         WindowStartupLocation="CenterScreen"
@@ -15,10 +15,10 @@
     <DockPanel LastChildFill="True" Margin="16">
 
         <Border DockPanel.Dock="Bottom"
-        Background="{StaticResource CardBackgroundBrush}"
-        CornerRadius="10"
-        Padding="12"
-        Margin="0,12,0,0">
+                Background="{StaticResource CardBackgroundBrush}"
+                CornerRadius="10"
+                Padding="12"
+                Margin="0,12,0,0">
             <StackPanel>
                 <DockPanel LastChildFill="False">
                     <TextBlock DockPanel.Dock="Left"
@@ -28,12 +28,12 @@
                        VerticalAlignment="Center" />
 
                     <Button DockPanel.Dock="Right"
-                    Content="Abort"
-                    Margin="12,0,0,0"
-                    Padding="12,4"
-                    MinHeight="28"
-                    Command="{Binding AbortCommand}"
-                    Visibility="{Binding CanAbort, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            Content="Abort"
+                            Margin="12,0,0,0"
+                            Padding="12,4"
+                            MinHeight="28"
+                            Command="{Binding AbortCommand}"
+                            Visibility="{Binding CanAbort, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </DockPanel>
 
                 <ProgressBar Margin="0,8,0,0"
@@ -214,10 +214,9 @@
                           Grid.ColumnSpan="3"
                           Margin="0,18,0,0">
 
-
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
-
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
@@ -243,13 +242,100 @@
                                     Command="{Binding AggressivePassCommand}" />
                         </WrapPanel>
 
-                        <WrapPanel Grid.Row="1"
-                                    Orientation="Horizontal" Margin="0,5,0,-5">
-                            <CheckBox Content="Replace original mod"
-                                      IsChecked="{Binding ReplaceOriginalMod}"
-                                      Foreground="White"
-                                      Margin="0,0,18,8"/>
+                        <StackPanel Grid.Row="1"
+                                    Margin="0,6,0,0">
 
+                            <TextBlock Text="Build Output"
+                                       Foreground="White"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,8"/>
+
+                            <WrapPanel Orientation="Horizontal">
+
+                                <RadioButton Content='Create new mod with "fixed" attached to the name'
+                                             GroupName="BuildOutputMode"
+                                             IsChecked="{Binding IsOutputModeNewFixed}"
+                                             Foreground="White"
+                                             Margin="0,0,18,8">
+                                    <RadioButton.ToolTip>
+                                        <ToolTip Content='Builds a separate mod zip and keeps the original zip untouched. The new file will be named like the original mod with "fixed" added to the name, so you can test the repaired version without overwriting the source mod.'/>
+                                    </RadioButton.ToolTip>
+                                </RadioButton>
+
+                                <RadioButton Content="Replace original mod"
+                                             GroupName="BuildOutputMode"
+                                             IsChecked="{Binding IsOutputModeReplaceOriginal}"
+                                             Foreground="White"
+                                             Margin="0,0,18,8">
+                                    <RadioButton.ToolTip>
+                                        <ToolTip Content="Builds the repaired mod and replaces the original zip in place. Use this when you want BeamNG to keep loading the same mod filename/location, but with the repaired contents instead."/>
+                                    </RadioButton.ToolTip>
+                                </RadioButton>
+
+                                <RadioButton Content='Create new mod with with "Fixed" and attach "disabled" to end of old mod'
+                                             GroupName="BuildOutputMode"
+                                             IsChecked="{Binding IsOutputModeNewFixedIgnored}"
+                                             Foreground="White"
+                                             Margin="0,0,18,8">
+                                    <RadioButton.ToolTip>
+                                        <ToolTip Content='Builds a separate repaired mod, adds "Fixed" to the new name, and saves it with a disabled ending so BeamNG should ignore it until you manually rename it back. Useful for staging, backup, or manual review before enabling the repaired mod.'/>
+                                    </RadioButton.ToolTip>
+                                </RadioButton>
+
+                                <RadioButton x:Name="ReplaceAndMoveOriginalsRadio"
+                                             Content="Replace original mod and move original zip(s) to custom location"
+                                             GroupName="BuildOutputMode"
+                                             IsChecked="{Binding IsOutputModeReplaceAndMoveOriginals}"
+                                             Foreground="White"
+                                             Margin="0,0,18,8"
+                                             Visibility="Collapsed">
+                                            
+                                    <RadioButton.ToolTip>
+                                        <ToolTip Content="Builds the repaired mod into the original mod's location, then moves the original zip file(s) to a custom folder you choose. This is useful when you want the repaired mod active in BeamNG, while keeping the old original zip stored somewhere safe outside any BeamNG-readable mods/content location."/>
+                                    </RadioButton.ToolTip>
+                                </RadioButton>
+                            </WrapPanel>
+
+                            <Grid Margin="0,2,0,0"
+                                 Visibility="{Binding IsChecked, ElementName=ReplaceAndMoveOriginalsRadio, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="120"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Grid Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBox x:Name="OriginalModsOutputFolderTextBox"
+                                             Text="{Binding OriginalModsOutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                                             Cursor="Hand"
+                                             PreviewMouseLeftButtonDown="OriginalModsOutputFolder_Click"/>
+
+                                    <TextBlock Text="Choose where the original zip(s) should be moved after replacement. Do not choose a BeamNG mods/content folder."
+                                               Foreground="#7F8792"
+                                               Margin="12,7,36,7"
+                                               TextWrapping="Wrap"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=OriginalModsOutputFolderTextBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+
+                                <Button Grid.Column="1"
+                                        Content="Clear"
+                                        Command="{Binding ClearOriginalModsOutputFolderCommand}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <WrapPanel Grid.Row="2"
+                                   Orientation="Horizontal"
+                                   Margin="0,10,0,-5">
                             <CheckBox Content="Guess new current additional texture names"
                                       IsChecked="{Binding UseNormalizedCurrentContentFixes}"
                                       Foreground="White"
@@ -265,17 +351,18 @@
                                       Foreground="White"
                                       Margin="0,0,18,8"/>
                         </WrapPanel>
+
                     </Grid>
 
                 </Grid>
             </Border>
 
             <TabControl Grid.Row="3"
-                Margin="0,0,0,0"
-                Background="{StaticResource CardBackgroundBrush}"
-                BorderBrush="{StaticResource ControlBorderBrush}"
-                BorderThickness="1"
-                SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
+                        Margin="0,0,0,0"
+                        Background="{StaticResource CardBackgroundBrush}"
+                        BorderBrush="{StaticResource ControlBorderBrush}"
+                        BorderThickness="1"
+                        SelectedIndex="{Binding SelectedMainTabIndex, Mode=TwoWay}">
 
                 <TabItem Header="Summary">
                     <Grid Margin="12">
@@ -286,18 +373,18 @@
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="16">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16">
                             <TextBlock Text="{Binding SummaryText}"
-                           Foreground="{StaticResource MutedForegroundBrush}"
-                           TextWrapping="Wrap"/>
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       TextWrapping="Wrap"/>
                         </Border>
 
                         <Border Grid.Row="2"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="12">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -305,26 +392,26 @@
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Batch Summary"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Margin="0,0,0,10"/>
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,10"/>
 
                                 <DataGrid Grid.Row="1"
-                              ItemsSource="{Binding BatchResults}"
-                              SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              SelectionMode="Single"
-                              HeadersVisibility="Column"
-                              EnableRowVirtualization="True"
-                              EnableColumnVirtualization="True"
-                              VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel"
-                              VirtualizingPanel.CacheLength="2"
-                              ScrollViewer.CanContentScroll="True"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                          ItemsSource="{Binding BatchResults}"
+                                          SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          SelectionMode="Single"
+                                          HeadersVisibility="Column"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="2"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Mod Zip" Binding="{Binding ModName}" Width="220"/>
                                         <DataGridTextColumn Header="Material Files" Binding="{Binding MaterialFiles}" Width="100"/>
@@ -355,10 +442,10 @@
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="16"
-                    Grid.RowSpan="2">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16"
+                                Grid.RowSpan="2">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="220"/>
@@ -369,27 +456,27 @@
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Column="0"
-                               Text="Selected Mod"
-                               VerticalAlignment="Center"/>
+                                           Text="Selected Mod"
+                                           VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="2"
-                              ItemsSource="{Binding BatchResults}"
-                              SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
-                              DisplayMemberPath="ModName"
-                              VerticalAlignment="Center"/>
+                                          ItemsSource="{Binding BatchResults}"
+                                          SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
+                                          DisplayMemberPath="ModName"
+                                          VerticalAlignment="Center"/>
 
                                 <Button Grid.Column="4"
-                            Content="Export CSV Report"
-                            Height="30"
-                            Command="{Binding ExportTextureReportCommand}"
-                            VerticalAlignment="Center"/>
+                                        Content="Export CSV Report"
+                                        Height="30"
+                                        Command="{Binding ExportTextureReportCommand}"
+                                        VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
 
                         <Border Grid.Row="3"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="12">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -397,25 +484,25 @@
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="First Pass Result"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Margin="0,-19,0,29"/>
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,-19,0,29"/>
 
                                 <DataGrid Grid.RowSpan="2"
-                              Margin="0,10,0,0"
-                              ItemsSource="{Binding DetailRows}"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              HeadersVisibility="Column"
-                              EnableRowVirtualization="True"
-                              EnableColumnVirtualization="True"
-                              VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel"
-                              VirtualizingPanel.CacheLength="2"
-                              ScrollViewer.CanContentScroll="True"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                          Margin="0,10,0,0"
+                                          ItemsSource="{Binding DetailRows}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          HeadersVisibility="Column"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="2"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Material File" Binding="{Binding MaterialFile}" Width="180"/>
                                         <DataGridTextColumn Header="Mode" Binding="{Binding ParseMode}" Width="90"/>
@@ -446,10 +533,10 @@
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="16"
-                    Grid.RowSpan="2">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16"
+                                Grid.RowSpan="2">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="220"/>
@@ -460,27 +547,27 @@
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Column="0"
-                               Text="Selected Mod"
-                               VerticalAlignment="Center"/>
+                                           Text="Selected Mod"
+                                           VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="2"
-                              ItemsSource="{Binding BatchResults}"
-                              SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
-                              DisplayMemberPath="ModName"
-                              VerticalAlignment="Center"/>
+                                          ItemsSource="{Binding BatchResults}"
+                                          SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
+                                          DisplayMemberPath="ModName"
+                                          VerticalAlignment="Center"/>
 
                                 <Button Grid.Column="4"
-                            Content="Export CSV Report"
-                            Height="30"
-                            Command="{Binding ExportMaterialReportCommand}"
-                            VerticalAlignment="Center"/>
+                                        Content="Export CSV Report"
+                                        Height="30"
+                                        Command="{Binding ExportMaterialReportCommand}"
+                                        VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
 
                         <Border Grid.Row="3"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="12">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -488,25 +575,25 @@
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Second Pass Result"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Margin="0,-19,0,29"/>
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,-19,0,29"/>
 
                                 <DataGrid Grid.RowSpan="2"
-                              Margin="0,10,0,0"
-                              ItemsSource="{Binding SecondPassRows}"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              HeadersVisibility="Column"
-                              EnableRowVirtualization="True"
-                              EnableColumnVirtualization="True"
-                              VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel"
-                              VirtualizingPanel.CacheLength="2"
-                              ScrollViewer.CanContentScroll="True"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                          Margin="0,10,0,0"
+                                          ItemsSource="{Binding SecondPassRows}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          HeadersVisibility="Column"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="2"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Material" Binding="{Binding MaterialName}" Width="180"/>
                                         <DataGridTextColumn Header="Ref Count" Binding="{Binding ReferenceCount}" Width="80"/>
@@ -524,12 +611,12 @@
                         </Border>
 
                         <Border Grid.Row="5"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="16">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16">
                             <TextBlock Text="{Binding SecondPassSummaryText}"
-                           Foreground="{StaticResource MutedForegroundBrush}"
-                           TextWrapping="Wrap"/>
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       TextWrapping="Wrap"/>
                         </Border>
                     </Grid>
                 </TabItem>
@@ -546,10 +633,10 @@
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="16"
-                    Grid.RowSpan="2">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16"
+                                Grid.RowSpan="2">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="220"/>
@@ -560,27 +647,27 @@
                                 </Grid.ColumnDefinitions>
 
                                 <TextBlock Grid.Column="0"
-                               Text="Selected Mod"
-                               VerticalAlignment="Center"/>
+                                           Text="Selected Mod"
+                                           VerticalAlignment="Center"/>
 
                                 <ComboBox Grid.Column="2"
-                              ItemsSource="{Binding BatchResults}"
-                              SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
-                              DisplayMemberPath="ModName"
-                              VerticalAlignment="Center"/>
+                                          ItemsSource="{Binding BatchResults}"
+                                          SelectedItem="{Binding SelectedBatchResult, Mode=TwoWay}"
+                                          DisplayMemberPath="ModName"
+                                          VerticalAlignment="Center"/>
 
                                 <Button Grid.Column="4"
-                            Content="Export CSV Report"
-                            Height="30"
-                            Command="{Binding ExportThirdPassReportCommand}"
-                            VerticalAlignment="Center"/>
+                                        Content="Export CSV Report"
+                                        Height="30"
+                                        Command="{Binding ExportThirdPassReportCommand}"
+                                        VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
 
                         <Border Grid.Row="3"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="12">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -588,25 +675,25 @@
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Third Pass Result"
-                               FontSize="18"
-                               FontWeight="SemiBold"
-                               Margin="0,-19,0,29"/>
+                                           FontSize="18"
+                                           FontWeight="SemiBold"
+                                           Margin="0,-19,0,29"/>
 
                                 <DataGrid Grid.RowSpan="2"
-                              Margin="0,10,0,0"
-                              ItemsSource="{Binding ThirdPassRows}"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              HeadersVisibility="Column"
-                              EnableRowVirtualization="True"
-                              EnableColumnVirtualization="True"
-                              VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling"
-                              VirtualizingPanel.ScrollUnit="Pixel"
-                              VirtualizingPanel.CacheLength="2"
-                              ScrollViewer.CanContentScroll="True"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                                          Margin="0,10,0,0"
+                                          ItemsSource="{Binding ThirdPassRows}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          HeadersVisibility="Column"
+                                          EnableRowVirtualization="True"
+                                          EnableColumnVirtualization="True"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="2"
+                                          ScrollViewer.CanContentScroll="True"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Material" Binding="{Binding MaterialName}" Width="180"/>
                                         <DataGridTextColumn Header="Pre-Status" Binding="{Binding PreStatus}" Width="160"/>
@@ -624,12 +711,12 @@
                         </Border>
 
                         <Border Grid.Row="5"
-                    Background="{StaticResource CardBackgroundBrush}"
-                    CornerRadius="16"
-                    Padding="16">
+                                Background="{StaticResource CardBackgroundBrush}"
+                                CornerRadius="16"
+                                Padding="16">
                             <TextBlock Text="{Binding ThirdPassSummaryText}"
-                           Foreground="{StaticResource MutedForegroundBrush}"
-                           TextWrapping="Wrap"/>
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       TextWrapping="Wrap"/>
                         </Border>
                     </Grid>
                 </TabItem>

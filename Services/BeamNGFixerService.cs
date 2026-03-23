@@ -171,7 +171,19 @@ namespace BeamNGTextureFixer.Services
             var materialInfos = new List<MaterialFileInfo>();
             var modFileSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            using var archive = ZipFile.OpenRead(modZipPath);
+            var zipToOpen = modZipPath;
+
+            if (!File.Exists(zipToOpen))
+            {
+                var disabledPath = modZipPath + ".disabled";
+
+                if (File.Exists(disabledPath))
+                    zipToOpen = disabledPath;
+                else
+                    throw new FileNotFoundException($"Mod zip not found: {modZipPath}");
+            }
+
+            using var archive = ZipFile.OpenRead(zipToOpen);
 
             int totalMaterialFilesInThisMod = archive.Entries.Count(entry =>
             {
@@ -851,6 +863,7 @@ namespace BeamNGTextureFixer.Services
             };
         }
 
+
         public BuildFixedResult BuildFixedMod(
             string outPath,
             bool useNormalizedCurrentContentFixes,
@@ -900,7 +913,23 @@ namespace BeamNGTextureFixer.Services
 
             try
             {
-                using (var zin = ZipFile.OpenRead(ModZipPath))
+                string zipToOpen = ModZipPath;
+
+                if (!File.Exists(zipToOpen))
+                {
+                    var disabledPath = ModZipPath + ".disabled";
+
+                    if (File.Exists(disabledPath))
+                    {
+                        zipToOpen = disabledPath;
+                    }
+                    else
+                    {
+                        throw new FileNotFoundException($"Mod zip not found: {ModZipPath}");
+                    }
+                }
+
+                using (var zin = ZipFile.OpenRead(zipToOpen))
                 using (var zout = ZipFile.Open(tempPath, ZipArchiveMode.Create))
                 {
                     int originalEntryCount = zin.Entries.Count(e => !(string.IsNullOrEmpty(e.Name) && e.FullName.EndsWith("/")));
