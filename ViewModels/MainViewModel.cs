@@ -33,6 +33,53 @@ namespace BeamNGTextureFixer.ViewModels
         public RelayCommand ClearModsCommand { get; }
         public RelayCommand ClearOriginalModsOutputFolderCommand { get; }
 
+        private bool _isSharedSingleZipAssetMode;
+        public bool IsSharedSingleZipAssetMode
+        {
+            get => _isSharedSingleZipAssetMode;
+            set
+            {
+                if (SetProperty(ref _isSharedSingleZipAssetMode, value))
+                {
+                    OnPropertyChanged(nameof(BuildButtonText));
+                    OnPropertyChanged(nameof(CurrentModeText));
+                    OnPropertyChanged(nameof(ShowSharedAssetPackPanel));
+                    OnPropertyChanged(nameof(AggressiveControlsEnabled));
+                    OnPropertyChanged(nameof(CanReplaceOriginalMod));
+                }
+            }
+        }
+
+        public string BuildButtonText =>
+            IsSharedSingleZipAssetMode ? "Build Mods + Shared Asset Zip" : "Build Fixed Mods";
+
+        public string CurrentModeText =>
+            IsSharedSingleZipAssetMode
+                ? "Mode: Shared asset pack build"
+                : "Mode: Self-contained mod builds";
+
+        public bool ShowSharedAssetPackPanel => IsSharedSingleZipAssetMode;
+
+        public bool AggressiveControlsEnabled => !IsSharedSingleZipAssetMode;
+
+        private string _sharedAssetZipOutputFolder = string.Empty;
+        public string SharedAssetZipOutputFolder
+        {
+            get => _sharedAssetZipOutputFolder;
+            set => SetProperty(ref _sharedAssetZipOutputFolder, value);
+        }
+
+        private string _sharedAssetZipName = "missingfilefix_shared_assets.zip";
+        public string SharedAssetZipName
+        {
+            get => _sharedAssetZipName;
+            set => SetProperty(ref _sharedAssetZipName, value);
+        }
+
+
+
+        public bool CanReplaceOriginalMod => !IsSharedSingleZipAssetMode;
+
         private BuildOutputMode _buildOutputMode = BuildOutputMode.NewFixed;
         public BuildOutputMode BuildOutputMode
         {

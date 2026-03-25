@@ -53,7 +53,6 @@
                 <RowDefinition Height="12"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-
             <Border Grid.Row="0"
                     Background="{StaticResource CardBackgroundBrush}"
                     CornerRadius="16"
@@ -73,6 +72,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
                         <Image Source="Assets/beamng_logo.png"
@@ -81,7 +81,8 @@
                                Margin="0,0,16,0"
                                VerticalAlignment="Top"/>
 
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1"
+                                    Margin="0,0,16,0">
                             <TextBlock Text="BeamNG Missing Texture Fixer"
                                        FontSize="28"
                                        FontWeight="SemiBold"/>
@@ -89,6 +90,20 @@
                                        Margin="0,8,0,0"
                                        Foreground="{StaticResource MutedForegroundBrush}"
                                        TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Top">
+                            <TextBlock Text="Shared Single Zip Asset Mode"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,10,0"
+                                       Foreground="{StaticResource MutedForegroundBrush}"/>
+
+                            <ToggleButton Style="{StaticResource BeamToggleSwitch}"
+                                          IsChecked="{Binding IsSharedAssetPackMode, Mode=TwoWay}"
+                                          ToolTip="Store recovered files in one shared zip instead of copying them into each mod zip."/>
                         </StackPanel>
                     </Grid>
                 </Grid>
