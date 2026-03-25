@@ -102,7 +102,7 @@
                                        Foreground="{StaticResource MutedForegroundBrush}"/>
 
                             <ToggleButton Style="{StaticResource BeamToggleSwitch}"
-                                          IsChecked="{Binding IsSharedAssetPackMode, Mode=TwoWay}"
+                                          IsChecked="{Binding IsSharedSingleZipAssetMode, Mode=TwoWay}"
                                           ToolTip="Store recovered files in one shared zip instead of copying them into each mod zip."/>
                         </StackPanel>
                     </Grid>
@@ -244,8 +244,8 @@
                                     Margin="0,0,10,10"
                                     Command="{Binding ScanCommand}" />
 
-                            <Button Content="Build Fixed Mod(s)"
-                                    Width="120"
+                            <Button Content="{Binding BuildButtonText}"
+                                    Width="160"
                                     Height="36"
                                     Margin="0,0,10,10"
                                     Command="{Binding BuildCommand}" />
@@ -254,7 +254,8 @@
                                     Width="240"
                                     Height="36"
                                     Margin="0,0,10,10"
-                                    Command="{Binding AggressivePassCommand}" />
+                                    Command="{Binding AggressivePassCommand}"
+                                    IsEnabled="{Binding AggressiveControlsEnabled}" />
                         </WrapPanel>
 
                         <StackPanel Grid.Row="1"
