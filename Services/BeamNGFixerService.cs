@@ -801,8 +801,9 @@ namespace BeamNGTextureFixer.Services
         }
 
         public RewritePlan BuildRewritePlan(
-            bool useNormalizedCurrentContentFixes,
-            bool useSameBasenameCurrentContentFixes)
+    bool useNormalizedCurrentContentFixes,
+    bool useSameBasenameCurrentContentFixes,
+    bool prepareMode)
         {
             if (string.IsNullOrWhiteSpace(ModZipPath))
                 throw new InvalidOperationException("No mod scanned.");
@@ -824,12 +825,29 @@ namespace BeamNGTextureFixer.Services
                 if (string.IsNullOrWhiteSpace(hit.SourceZipPath) || string.IsNullOrWhiteSpace(hit.InternalPath))
                     continue;
 
-                var newPath = MakeMissingfilefixTarget(
-                    hit,
-                    modStem,
-                    useNormalizedCurrentContentFixes,
-                    useSameBasenameCurrentContentFixes,
-                    collisionCounts);
+                string newPath;
+
+                if (prepareMode)
+                {
+                    var sourceZipStem = Path.GetFileNameWithoutExtension(hit.SourceZipPath!) ?? "source";
+                    sourceZipStem = PathHelpers.SanitizeModStem(sourceZipStem);
+
+                    var internalPath = hit.InternalPath!
+                        .Replace('\\', '/')
+                        .TrimStart('/');
+
+                    newPath = $"missingfilefix_session/{sourceZipStem}/{internalPath}";
+                }
+                else
+                {
+                    newPath = MakeMissingfilefixTarget(
+                        hit,
+                        modStem,
+                        useNormalizedCurrentContentFixes,
+                        useSameBasenameCurrentContentFixes,
+                        collisionCounts);
+                }
+
                 copyJobs[(hit.SourceZipPath!, hit.InternalPath!)] = newPath;
 
                 if (string.Equals(reference.ExtractionMode, "json", StringComparison.OrdinalIgnoreCase))
@@ -864,10 +882,12 @@ namespace BeamNGTextureFixer.Services
         }
 
 
+
         public BuildFixedResult BuildFixedMod(
             string outPath,
             bool useNormalizedCurrentContentFixes,
             bool useSameBasenameCurrentContentFixes,
+            bool prepareMode,
             Action<int, int, string>? progressCallback = null,
             CancellationToken token = default)
         {
@@ -878,7 +898,8 @@ namespace BeamNGTextureFixer.Services
 
             var plan = BuildRewritePlan(
                 useNormalizedCurrentContentFixes,
-                useSameBasenameCurrentContentFixes);
+                useSameBasenameCurrentContentFixes,
+                prepareMode);
 
             progressCallback?.Invoke(8, 100, "Rewrite plan ready...");
 
@@ -895,13 +916,13 @@ namespace BeamNGTextureFixer.Services
             }
 
             var reportLines = new List<string>
-    {
-        $"Mod: {ModZipPath}",
-        $"Old content folder: {OldFolder}",
-        $"Current content folder: {(string.IsNullOrWhiteSpace(CurrentFolder) ? "(not specified)" : CurrentFolder)}",
-        "",
-        "Material file modes:"
-    };
+            {
+                $"Mod: {ModZipPath}",
+                $"Old content folder: {OldFolder}",
+                $"Current content folder: {(string.IsNullOrWhiteSpace(CurrentFolder) ? "(not specified)" : CurrentFolder)}",
+                "",
+                "Material file modes:"
+            };
 
             foreach (var info in MaterialFileInfos)
                 reportLines.Add($"{info.Path} | {info.ParseMode} | refs={info.RefCount} | error={info.Error}");
@@ -981,8 +1002,20 @@ namespace BeamNGTextureFixer.Services
                         if (MaterialJsonMap.TryGetValue(norm, out var jsonDoc) && jsonDoc is not null)
                         {
                             var updatedJson = RewriteJsonMaterial(norm, jsonDoc, plan.RewritesByJson, reportLines);
-                            var outEntry = zout.CreateEntry(entry.FullName, CompressionLevel.Optimal);
 
+                            if (!string.Equals(updatedJson, jsonDoc.RootElement.GetRawText(), StringComparison.Ordinal))
+                            {
+                                var backupEntry = zout.CreateEntry(entry.FullName + ".missingfilefix.backup", CompressionLevel.Optimal);
+                                using (var backupOutStream = backupEntry.Open())
+                                using (var backupWriter = new StreamWriter(backupOutStream, new UTF8Encoding(false)))
+                                using (var originalStream = entry.Open())
+                                using (var originalReader = new StreamReader(originalStream, Encoding.UTF8, true))
+                                {
+                                    backupWriter.Write(originalReader.ReadToEnd());
+                                }
+                            }
+
+                            var outEntry = zout.CreateEntry(entry.FullName, CompressionLevel.Optimal);
                             using var outStream = outEntry.Open();
                             using var writer = new StreamWriter(outStream, new UTF8Encoding(false));
                             writer.Write(updatedJson);
@@ -996,18 +1029,20 @@ namespace BeamNGTextureFixer.Services
                             else
                                 updatedText = RewriteTextMaterial(norm, rawText, textRewrites, reportLines);
 
-                            var outEntry = zout.CreateEntry(entry.FullName, CompressionLevel.Optimal);
+                            if (!string.Equals(updatedText, rawText, StringComparison.Ordinal))
+                            {
+                                var backupEntry = zout.CreateEntry(entry.FullName + ".missingfilefix.backup", CompressionLevel.Optimal);
+                                using (var backupOutStream = backupEntry.Open())
+                                using (var backupWriter = new StreamWriter(backupOutStream, new UTF8Encoding(false)))
+                                {
+                                    backupWriter.Write(rawText);
+                                }
+                            }
 
+                            var outEntry = zout.CreateEntry(entry.FullName, CompressionLevel.Optimal);
                             using var outStream = outEntry.Open();
                             using var writer = new StreamWriter(outStream, new UTF8Encoding(false));
                             writer.Write(updatedText);
-                        }
-                        else
-                        {
-                            var outEntry = zout.CreateEntry(entry.FullName, CompressionLevel.Optimal);
-                            using var inStream = entry.Open();
-                            using var outStream = outEntry.Open();
-                            inStream.CopyTo(outStream);
                         }
 
                         processedOriginalEntries++;
@@ -1016,34 +1051,37 @@ namespace BeamNGTextureFixer.Services
 
                     ReportOverallProgress("Copying resolved files...");
 
-                    foreach (var job in plan.CopyJobs)
+                    if (!prepareMode)
                     {
-                        token.ThrowIfCancellationRequested();
+                        foreach (var job in plan.CopyJobs)
+                        {
+                            token.ThrowIfCancellationRequested();
 
-                        var sourceZipPath = job.Key.SourceZipPath;
-                        var internalPath = job.Key.InternalPath;
-                        var destPath = job.Value;
+                            var sourceZipPath = job.Key.SourceZipPath;
+                            var internalPath = job.Key.InternalPath;
+                            var destPath = job.Value;
 
-                        using var sourceArchive = ZipFile.OpenRead(sourceZipPath);
-                        var sourceEntry = sourceArchive.GetEntry(internalPath.Replace("\\", "/"))
-                                         ?? sourceArchive.Entries.FirstOrDefault(e =>
-                                             string.Equals(
-                                                 PathHelpers.NormalizePath(e.FullName),
-                                                 PathHelpers.NormalizePath(internalPath),
-                                                 StringComparison.OrdinalIgnoreCase));
+                            using var sourceArchive = ZipFile.OpenRead(sourceZipPath);
+                            var sourceEntry = sourceArchive.GetEntry(internalPath.Replace("\\", "/"))
+                                             ?? sourceArchive.Entries.FirstOrDefault(e =>
+                                                 string.Equals(
+                                                     PathHelpers.NormalizePath(e.FullName),
+                                                     PathHelpers.NormalizePath(internalPath),
+                                                     StringComparison.OrdinalIgnoreCase));
 
-                        if (sourceEntry == null)
-                            throw new FileNotFoundException($"Could not find '{internalPath}' inside '{sourceZipPath}'.");
+                            if (sourceEntry == null)
+                                throw new FileNotFoundException($"Could not find '{internalPath}' inside '{sourceZipPath}'.");
 
-                        var outEntry = zout.CreateEntry(destPath, CompressionLevel.Optimal);
-                        using var inStream = sourceEntry.Open();
-                        using var outStream = outEntry.Open();
-                        inStream.CopyTo(outStream);
+                            var outEntry = zout.CreateEntry(destPath, CompressionLevel.Optimal);
+                            using var inStream = sourceEntry.Open();
+                            using var outStream = outEntry.Open();
+                            inStream.CopyTo(outStream);
 
-                        copiedSoFar++;
-                        ReportOverallProgress($"Copying resolved files... {copiedSoFar} / {totalCopyJobs}");
+                            copiedSoFar++;
+                            ReportOverallProgress($"Copying resolved files... {copiedSoFar} / {totalCopyJobs}");
 
-                        reportLines.Add($"COPY | {sourceZipPath} | {internalPath} -> {destPath}");
+                            reportLines.Add($"COPY | {sourceZipPath} | {internalPath} -> {destPath}");
+                        }
                     }
 
                     progressCallback?.Invoke(98, 100, "Writing report...");

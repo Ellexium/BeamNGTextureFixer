@@ -22,10 +22,10 @@
             <StackPanel>
                 <DockPanel LastChildFill="False">
                     <TextBlock DockPanel.Dock="Left"
-                       Text="{Binding StatusText}"
-                       Foreground="{StaticResource MutedForegroundBrush}"
-                       FontSize="13"
-                       VerticalAlignment="Center" />
+                               Text="{Binding StatusText}"
+                               Foreground="{StaticResource MutedForegroundBrush}"
+                               FontSize="13"
+                               VerticalAlignment="Center" />
 
                     <Button DockPanel.Dock="Right"
                             Content="Abort"
@@ -37,12 +37,12 @@
                 </DockPanel>
 
                 <ProgressBar Margin="0,8,0,0"
-                     Height="6"
-                     Minimum="0"
-                     Maximum="{Binding ProgressMaximum}"
-                     Value="{Binding ProgressValue}"
-                     IsIndeterminate="{Binding IsProgressIndeterminate}"
-                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
+                             Height="6"
+                             Minimum="0"
+                             Maximum="{Binding ProgressMaximum}"
+                             Value="{Binding ProgressValue}"
+                             IsIndeterminate="{Binding IsProgressIndeterminate}"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
             </StackPanel>
         </Border>
 
@@ -73,6 +73,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
                         <Image Source="Assets/beamng_logo.png"
@@ -81,7 +82,8 @@
                                Margin="0,0,16,0"
                                VerticalAlignment="Top"/>
 
-                        <StackPanel Grid.Column="1">
+                        <StackPanel Grid.Column="1"
+                                    Margin="0,0,16,0">
                             <TextBlock Text="BeamNG Missing Texture Fixer"
                                        FontSize="28"
                                        FontWeight="SemiBold"/>
@@ -89,6 +91,20 @@
                                        Margin="0,8,0,0"
                                        Foreground="{StaticResource MutedForegroundBrush}"
                                        TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="Prepare for one mod instead"
+                                       Margin="0,0,10,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource MutedForegroundBrush}"/>
+
+                            <ToggleButton Style="{StaticResource BeamToggleSwitch}"
+                                          IsChecked="{Binding PrepareForOneModInstead, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanEditPrepareForOneModInstead}"
+                                          VerticalAlignment="Center"/>
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -239,11 +255,16 @@
                                     Width="240"
                                     Height="36"
                                     Margin="0,0,10,10"
-                                    Command="{Binding AggressivePassCommand}" />
+                                    Command="{Binding AggressivePassCommand}" 
+                                    Visibility="{Binding ShowAggressivePassButton, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            
+                            
                         </WrapPanel>
 
                         <StackPanel Grid.Row="1"
-                                    Margin="0,6,0,0">
+                                    Margin="0,6,0,0"
+                                    Visibility="{Binding ShowBuildOutputSection, Converter={StaticResource BoolToVisibilityConverter}}">
+                            
 
                             <TextBlock Text="Build Output"
                                        Foreground="White"

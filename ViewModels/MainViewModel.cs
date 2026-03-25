@@ -135,6 +135,8 @@ namespace BeamNGTextureFixer.ViewModels
             }
         }
 
+
+
         private bool _useNormalizedCurrentContentFixes;
 
         public bool UseNormalizedCurrentContentFixes
@@ -332,6 +334,36 @@ namespace BeamNGTextureFixer.ViewModels
             }
         }
 
+        private bool _prepareForOneModInstead;
+        public bool PrepareForOneModInstead
+        {
+            get => _prepareForOneModInstead;
+            set
+            {
+                if (SetProperty(ref _prepareForOneModInstead, value))
+                {
+                    OnPropertyChanged(nameof(ShowBuildOutputSection));
+                    OnPropertyChanged(nameof(ShowAggressivePassButton));
+                    OnPropertyChanged(nameof(CanEditPrepareForOneModInstead));
+                }
+            }
+        }
+
+        private bool _prepareForOneModInsteadLocked;
+        public bool PrepareForOneModInsteadLocked
+        {
+            get => _prepareForOneModInsteadLocked;
+            set
+            {
+                if (SetProperty(ref _prepareForOneModInsteadLocked, value))
+                    OnPropertyChanged(nameof(CanEditPrepareForOneModInstead));
+            }
+        }
+
+        public bool CanEditPrepareForOneModInstead => !PrepareForOneModInsteadLocked && !IsBusy;
+        public bool ShowBuildOutputSection => !PrepareForOneModInstead;
+        public bool ShowAggressivePassButton => !PrepareForOneModInstead;
+
         public List<string> SelectedMods { get; } = new();
 
         public RelayCommand BrowseOldCommand { get; }
@@ -348,16 +380,22 @@ namespace BeamNGTextureFixer.ViewModels
 
         private void ClearOldFolder()
         {
+            PrepareForOneModInsteadLocked = false;
+            PrepareForOneModInstead = false;
             OldContentFolder = string.Empty;
         }
 
         private void ClearCurrentFolder()
         {
+            PrepareForOneModInsteadLocked = false;
+            PrepareForOneModInstead = false;
             CurrentContentFolder = string.Empty;
         }
 
         private void ClearMods()
         {
+            PrepareForOneModInsteadLocked = false;
+            PrepareForOneModInstead = false;
             SelectedMods.Clear();
             SelectedModsDisplay = string.Empty;
             RefreshActionButtons();
@@ -514,6 +552,9 @@ namespace BeamNGTextureFixer.ViewModels
 
         private bool CanRunAggressivePass()
         {
+            if (PrepareForOneModInstead)
+                return false;
+
             if (IsBusy)
                 return false;
 
@@ -881,6 +922,8 @@ namespace BeamNGTextureFixer.ViewModels
                 MessageBox.Show("Please choose a valid old BeamNG content folder.", "Missing Old Content Folder");
                 return;
             }
+
+            PrepareForOneModInsteadLocked = true;
 
             BatchResults.Clear();
             RefreshActionButtons();
@@ -1431,10 +1474,17 @@ namespace BeamNGTextureFixer.ViewModels
             return "";
         }
 
-       
+
 
         private async void BuildModsPlaceholder()
         {
+            if (PrepareForOneModInstead)
+            {
+                await PrepareModsForSharedPack();
+                await BuildSharedDependencyZip();
+                return;
+            }
+
             if (BatchResults.Count == 0)
             {
                 MessageBox.Show("Scan one or more mods first.", "No Scan");
@@ -1538,6 +1588,7 @@ namespace BeamNGTextureFixer.ViewModels
                                 outPath,
                                 UseNormalizedCurrentContentFixes,
                                 UseSameBasenameCurrentContentFixes,
+                                PrepareForOneModInstead,
                                 (done, total, message) =>
                                 {
                                     System.Windows.Application.Current.Dispatcher.Invoke(() =>
@@ -1622,6 +1673,240 @@ namespace BeamNGTextureFixer.ViewModels
             }
         }
 
+        private async Task BuildSharedDependencyZip()
+        {
+            if (BatchResults.Count == 0)
+            {
+                MessageBox.Show("Scan and prepare one or more mods first.", "No Prepared Mods");
+                return;
+            }
+
+            var preparedRows = BatchResults
+                .Where(x =>
+                    string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(x.OutZip) &&
+                    x.Service is not null)
+                .ToList();
+
+            if (preparedRows.Count == 0)
+            {
+                MessageBox.Show("No prepared mods were found.", "Nothing To Build");
+                return;
+            }
+
+            var firstOutZip = preparedRows
+                .Select(x => x.OutZip)
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+
+            if (string.IsNullOrWhiteSpace(firstOutZip))
+            {
+                MessageBox.Show("Could not determine output folder.", "Error");
+                return;
+            }
+
+            var outputFolder = Path.GetDirectoryName(firstOutZip!) ?? "";
+            var sharedZipPath = Path.Combine(outputFolder, "missingfilefix_session_shared.zip");
+
+            BeginBusy();
+            StatusText = "Building shared dependency zip...";
+
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                () => { },
+                System.Windows.Threading.DispatcherPriority.Render);
+
+            var token = _cts?.Token ?? CancellationToken.None;
+
+            try
+            {
+                await Task.Run(() =>
+                {
+                    var uniqueJobs = new Dictionary<string, (string SourceZipPath, string InternalPath, string DestPath)>(StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var row in preparedRows)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        var plan = row.Service!.BuildRewritePlan(
+                            UseNormalizedCurrentContentFixes,
+                            UseSameBasenameCurrentContentFixes,
+                            true);
+
+                        foreach (var kvp in plan.CopyJobs)
+                        {
+                            var sourceZipPath = kvp.Key.SourceZipPath;
+                            var internalPath = kvp.Key.InternalPath;
+                            var destPath = kvp.Value;
+
+                            if (string.IsNullOrWhiteSpace(sourceZipPath) ||
+                                string.IsNullOrWhiteSpace(internalPath) ||
+                                string.IsNullOrWhiteSpace(destPath))
+                                continue;
+
+                            var dedupeKey = destPath.Replace('\\', '/');
+
+                            if (!uniqueJobs.ContainsKey(dedupeKey))
+                            {
+                                uniqueJobs[dedupeKey] = (sourceZipPath, internalPath, destPath);
+                            }
+                        }
+                    }
+
+                    IsProgressIndeterminate = false;
+                    ProgressMaximum = uniqueJobs.Count;
+                    ProgressValue = 0;
+
+                    using var fs = new FileStream(sharedZipPath, FileMode.Create, FileAccess.ReadWrite);
+                    using var zout = new ZipArchive(fs, ZipArchiveMode.Create);
+
+                    int done = 0;
+
+                    foreach (var job in uniqueJobs.Values)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        using var sourceFs = new FileStream(job.SourceZipPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        using var zin = new ZipArchive(sourceFs, ZipArchiveMode.Read);
+
+                        var sourceEntry = zin.GetEntry(job.InternalPath.Replace('\\', '/').TrimStart('/'));
+                        if (sourceEntry is null)
+                        {
+                            sourceEntry = zin.Entries.FirstOrDefault(e =>
+                                string.Equals(
+                                    e.FullName.Replace('\\', '/').TrimStart('/'),
+                                    job.InternalPath.Replace('\\', '/').TrimStart('/'),
+                                    StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        if (sourceEntry is null)
+                            continue;
+
+                        var outEntry = zout.CreateEntry(job.DestPath.Replace('\\', '/').TrimStart('/'), CompressionLevel.Optimal);
+
+                        using (var inStream = sourceEntry.Open())
+                        using (var outStream = outEntry.Open())
+                        {
+                            inStream.CopyTo(outStream);
+                        }
+
+                        done++;
+                        var localDone = done;
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            ProgressValue = localDone;
+                            StatusText = $"Building shared dependency zip... ({localDone}/{uniqueJobs.Count})";
+                        });
+                    }
+                }, token);
+
+                StatusText = $"Shared dependency zip built: {Path.GetFileName(sharedZipPath)}";
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Shared dependency zip build aborted.";
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Error building shared dependency zip.";
+                MessageBox.Show(ex.Message, "Shared Zip Error");
+            }
+            finally
+            {
+                EndBusy();
+                RefreshActionButtons();
+                UpdateStatusSummary();
+            }
+        }
+        private async Task PrepareModsForSharedPack()
+        {
+            if (BatchResults.Count == 0)
+            {
+                MessageBox.Show("Scan one or more mods first.", "No Scan");
+                return;
+            }
+
+            var remainingRows = BatchResults
+                .Where(x => !string.Equals(x.BuildStatus, "built", StringComparison.OrdinalIgnoreCase)
+                         && x.ResolvedFromOld > 0)
+                .ToList();
+
+            if (remainingRows.Count == 0)
+            {
+                StatusText = "All fixable mods are already prepared.";
+                return;
+            }
+
+            BeginBusy();
+            StatusText = "Preparing mods for shared pack...";
+
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                () => { },
+                System.Windows.Threading.DispatcherPriority.Render);
+
+            var token = _cts?.Token ?? CancellationToken.None;
+
+            try
+            {
+                await Task.Run(() =>
+                {
+                    foreach (var row in remainingRows)
+                    {
+                        if (row.Service is null)
+                            continue;
+
+                        token.ThrowIfCancellationRequested();
+
+                        var outPath = BuildOutputPathForRow(row);
+
+                        var result = row.Service.BuildFixedMod(
+                            outPath,
+                            UseNormalizedCurrentContentFixes,
+                            UseSameBasenameCurrentContentFixes,
+                            true,
+                            (done, total, message) =>
+                            {
+                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    IsProgressIndeterminate = false;
+                                    ProgressMaximum = total;
+                                    ProgressValue = done;
+                                    StatusText = $"{Path.GetFileName(row.ModZip)} - {message}";
+                                });
+                            },
+                            token);
+
+                        if (result.Built)
+                        {
+                            row.BuildStatus = "built";
+                            row.FixesMade = result.Copied;
+                            row.OutZip = result.OutPath;
+                        }
+                        else
+                        {
+                            row.BuildStatus = "skipped";
+                            row.FixesMade = 0;
+                            row.OutZip = result.OutPath;
+                        }
+                    }
+                }, token);
+
+                StatusText = "Preparation complete.";
+            }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Preparation aborted.";
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Error during preparation.";
+                MessageBox.Show(ex.Message, "Prepare Error");
+            }
+            finally
+            {
+                EndBusy();
+                RefreshActionButtons();
+                UpdateStatusSummary();
+            }
+        }
         private async void RunAggressivePassPlaceholder()
         {
             if (BatchResults.Count == 0)
